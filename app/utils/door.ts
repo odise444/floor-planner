@@ -183,7 +183,9 @@ export function getDoorArcConfig(
         // 방 안(아래)으로 열림
         rotation = isLeftHinge ? 0 : 90
       } else {
-        // 방 밖(위)으로 열림
+        // 방 밖(위)으로 열림 - 호가 위(-y) 방향으로 그려져야 함
+        // 왼쪽 경첩: -90도(위)에서 시작 → 0도(오른쪽)까지
+        // 오른쪽 경첩: 180도(왼쪽)에서 시작 → 270도(-90, 위)까지
         rotation = isLeftHinge ? -90 : 180
       }
       break
@@ -194,10 +196,14 @@ export function getDoorArcConfig(
       y = isInside ? 0 : 10  // inside면 위(방 안)로
       if (isInside) {
         // 방 안(위)으로 열림
-        rotation = isLeftHinge ? 180 : -90
+        // 왼쪽 경첩: -90도(위)에서 시작 → 0도(오른쪽)까지
+        // 오른쪽 경첩: 180도(왼쪽)에서 시작 → 270도(-90도, 위)까지
+        rotation = isLeftHinge ? -90 : 180
       } else {
-        // 방 밖(아래)으로 열림
-        rotation = isLeftHinge ? 90 : 180
+        // 방 밖(아래)으로 열림 - 호가 문 프레임(y=10) 아래에서 그려져야 함
+        // 왼쪽 경첩: 0도(오른쪽)에서 시작 → 90도(아래)까지
+        // 오른쪽 경첩: 90도(아래)에서 시작 → 180도(왼쪽)까지
+        rotation = isLeftHinge ? 0 : 90
       }
       break
 
@@ -207,10 +213,14 @@ export function getDoorArcConfig(
       y = isLeftHinge ? 0 : doorWidthPx
       if (isInside) {
         // 방 안(오른쪽)으로 열림
-        rotation = isLeftHinge ? 0 : 90
+        // 왼쪽(위) 경첩: 0도에서 시작, 반시계로 90도 → 아래로 그려짐
+        // 오른쪽(아래) 경첩: -90도에서 시작, 반시계로 90도 → 위로 그려짐
+        rotation = isLeftHinge ? 0 : -90
       } else {
-        // 방 밖(왼쪽)으로 열림
-        rotation = isLeftHinge ? 180 : -90
+        // 방 밖(왼쪽)으로 열림 - 호가 -x 방향으로 그려져야 함
+        // 왼쪽(위) 경첩: 90도(아래)에서 시작 → 180도(왼쪽)까지
+        // 오른쪽(아래) 경첩: 180도(왼쪽)에서 시작 → 270도(위)까지
+        rotation = isLeftHinge ? 90 : 180
       }
       break
 
@@ -220,7 +230,9 @@ export function getDoorArcConfig(
       y = isLeftHinge ? 0 : doorWidthPx
       if (isInside) {
         // 방 안(왼쪽)으로 열림
-        rotation = isLeftHinge ? 180 : 90
+        // 왼쪽(위) 경첩: 아래에서 왼쪽으로 (rotation=90, 끝점 y=0+dw*sin(180)=0)
+        // 오른쪽(아래) 경첩: 위에서 왼쪽으로 (rotation=180, 끝점 y=dw+dw*sin(270)=0)
+        rotation = isLeftHinge ? 90 : 180
       } else {
         // 방 밖(오른쪽)으로 열림
         rotation = isLeftHinge ? 0 : -90

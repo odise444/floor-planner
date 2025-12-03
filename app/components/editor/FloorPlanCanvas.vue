@@ -800,6 +800,7 @@ const getDoorArcConfig = (door: Door) => {
     outerRadius: dw,
     angle: 90,
     rotation: config.rotation,
+    clockwise: false, // 반시계방향으로 그림
     fill: "transparent",
     stroke: "#6b7280",
     strokeWidth: 1,
