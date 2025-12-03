@@ -66,8 +66,9 @@
         <v-group
           v-for="door in doorList"
           :key="door.id"
-          :config="getDoorPosition(door)"
+          :config="getDoorGroupConfig(door)"
           @click="selectDoor(door)"
+          @dragend="onDoorDragEnd(door, $event)"
         >
           <!-- 문 프레임 (벽 끊김 표시) -->
           <v-rect
@@ -697,23 +698,83 @@ const selectFurniture = (furniture: Furniture) => {
   selectedDoor.value = null;
 };
 
-// 문 위치 계산
-const getDoorPosition = (door: Door) => {
-  if (!room.value) return { x: 0, y: 0 };
+// 문 그룹 설정 (위치 + 드래그)
+const getDoorGroupConfig = (door: Door) => {
+  if (!room.value) return { x: 0, y: 0, draggable: true };
   const r = room.value;
+
+  let x = 0;
+  let y = 0;
 
   switch (door.wall) {
     case "top":
-      return { x: r.x + door.x * scale, y: r.y - 5 };
+      x = r.x + door.x * scale;
+      y = r.y - 5;
+      break;
     case "bottom":
-      return { x: r.x + door.x * scale, y: r.y + r.height - 5 };
+      x = r.x + door.x * scale;
+      y = r.y + r.height - 5;
+      break;
     case "left":
-      return { x: r.x - 5, y: r.y + door.y * scale };
+      x = r.x - 5;
+      y = r.y + door.y * scale;
+      break;
     case "right":
-      return { x: r.x + r.width - 5, y: r.y + door.y * scale };
-    default:
-      return { x: 0, y: 0 };
+      x = r.x + r.width - 5;
+      y = r.y + door.y * scale;
+      break;
   }
+
+  return { x, y, draggable: true };
+};
+
+// 문을 가장 가까운 벽에 스냅
+const snapDoorToWall = (
+  worldX: number,
+  worldY: number,
+  dw: number
+): { wall: Door["wall"]; x: number; y: number } => {
+  if (!room.value) return { wall: "bottom", x: 0, y: 0 };
+  const r = room.value;
+
+  // 각 벽까지의 거리 계산
+  const distTop = Math.abs(worldY - r.y);
+  const distBottom = Math.abs(worldY - (r.y + r.height));
+  const distLeft = Math.abs(worldX - r.x);
+  const distRight = Math.abs(worldX - (r.x + r.width));
+
+  const minDist = Math.min(distTop, distBottom, distLeft, distRight);
+
+  if (minDist === distTop) {
+    const posX = Math.max(0, Math.min((r.width - dw) / scale, (worldX - r.x) / scale));
+    return { wall: "top", x: posX, y: 0 };
+  } else if (minDist === distBottom) {
+    const posX = Math.max(0, Math.min((r.width - dw) / scale, (worldX - r.x) / scale));
+    return { wall: "bottom", x: posX, y: 0 };
+  } else if (minDist === distLeft) {
+    const posY = Math.max(0, Math.min((r.height - dw) / scale, (worldY - r.y) / scale));
+    return { wall: "left", x: 0, y: posY };
+  } else {
+    const posY = Math.max(0, Math.min((r.height - dw) / scale, (worldY - r.y) / scale));
+    return { wall: "right", x: 0, y: posY };
+  }
+};
+
+// 문 드래그 종료
+const onDoorDragEnd = (door: Door, e: any) => {
+  if (!room.value) return;
+  const node = e.target;
+  const dw = door.width * scale;
+
+  // 드래그된 위치 (월드 좌표)
+  const worldX = node.x();
+  const worldY = node.y();
+
+  // 가장 가까운 벽에 스냅
+  const snapped = snapDoorToWall(worldX, worldY, dw);
+  door.wall = snapped.wall;
+  door.x = snapped.x;
+  door.y = snapped.y;
 };
 
 // 문 열림 호(arc) 설정
