@@ -8,6 +8,25 @@
     <!-- 가구 목록 -->
     <div class="flex-1 overflow-y-auto p-4">
       <div class="space-y-2">
+        <!-- 문 추가 버튼 -->
+        <div
+          class="p-3 bg-green-50 rounded-lg cursor-pointer hover:bg-green-100 transition-colors border-2 border-dashed border-green-300"
+          @click="$emit('add-door')"
+        >
+          <div class="flex items-center gap-3">
+            <div
+              class="w-10 h-10 rounded flex items-center justify-center text-white text-xs bg-green-500"
+            >
+              🚪
+            </div>
+            <div>
+              <div class="text-sm font-medium text-gray-700">문 추가</div>
+              <div class="text-xs text-gray-500">벽에 문 배치</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 가구 목록 -->
         <div
           v-for="item in furnitureItems"
           :key="item.id"
@@ -36,6 +55,10 @@
 </template>
 
 <script setup lang="ts">
+defineEmits<{
+  'add-door': []
+}>()
+
 interface FurnitureItem {
   id: string
   name: string
