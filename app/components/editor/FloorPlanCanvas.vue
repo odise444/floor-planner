@@ -444,6 +444,9 @@ const onMouseDown = (e: any) => {
     isPanning.value = true;
     const pos = e.target.getStage().getPointerPosition();
     lastPointerPos.value = { x: pos.x, y: pos.y };
+    // 빈 공간 클릭 시 선택 해제
+    selectedFurniture.value = null;
+    selectedDoor.value = null;
   }
 };
 
@@ -779,91 +782,22 @@ const getDoorArcConfig = (door: Door) => {
   };
 };
 
-// 문 패널(열린 문) 설정 - 호 안에 위치하도록
+// 문 패널(열린 문) 설정 - arc와 동일한 중심점에서 45도 방향
 const getDoorPanelConfig = (door: Door) => {
   const dw = door.width * scale;
-  const isHorizontal = door.wall === "top" || door.wall === "bottom";
-  const isInside = door.openDirection === "inside";
-  const isLeftHinge = door.hingeSide === "left";
+  const arcConfig = getDoorArcConfig(door);
 
-  let points: number[] = [];
+  // arc의 중심점(경첩 위치)
+  const cx = arcConfig.x;
+  const cy = arcConfig.y;
 
-  // 호와 동일한 시작점에서 45도 각도로 문 길이만큼 그림
-  if (isHorizontal) {
-    if (door.wall === "top") {
-      if (isInside) {
-        // 안쪽 열림 (아래로)
-        if (isLeftHinge) {
-          points = [0, 10, dw * 0.707, 10 + dw * 0.707];
-        } else {
-          points = [dw, 10, dw - dw * 0.707, 10 + dw * 0.707];
-        }
-      } else {
-        // 바깥쪽 열림 (위로)
-        if (isLeftHinge) {
-          points = [0, 10, dw * 0.707, 10 - dw * 0.707];
-        } else {
-          points = [dw, 10, dw - dw * 0.707, 10 - dw * 0.707];
-        }
-      }
-    } else {
-      // bottom
-      if (isInside) {
-        // 안쪽 열림 (위로)
-        if (isLeftHinge) {
-          points = [0, 0, dw * 0.707, -dw * 0.707];
-        } else {
-          points = [dw, 0, dw - dw * 0.707, -dw * 0.707];
-        }
-      } else {
-        // 바깥쪽 열림 (아래로)
-        if (isLeftHinge) {
-          points = [0, 0, dw * 0.707, dw * 0.707];
-        } else {
-          points = [dw, 0, dw - dw * 0.707, dw * 0.707];
-        }
-      }
-    }
-  } else {
-    // 세로 벽
-    if (door.wall === "left") {
-      if (isInside) {
-        // 안쪽 열림 (오른쪽으로)
-        if (isLeftHinge) {
-          points = [10, 0, 10 + dw * 0.707, dw * 0.707];
-        } else {
-          points = [10, dw, 10 + dw * 0.707, dw - dw * 0.707];
-        }
-      } else {
-        // 바깥쪽 열림 (왼쪽으로)
-        if (isLeftHinge) {
-          points = [10, 0, 10 - dw * 0.707, dw * 0.707];
-        } else {
-          points = [10, dw, 10 - dw * 0.707, dw - dw * 0.707];
-        }
-      }
-    } else {
-      // right
-      if (isInside) {
-        // 안쪽 열림 (왼쪽으로)
-        if (isLeftHinge) {
-          points = [0, 0, -dw * 0.707, dw * 0.707];
-        } else {
-          points = [0, dw, -dw * 0.707, dw - dw * 0.707];
-        }
-      } else {
-        // 바깥쪽 열림 (오른쪽으로)
-        if (isLeftHinge) {
-          points = [0, 0, dw * 0.707, dw * 0.707];
-        } else {
-          points = [0, dw, dw * 0.707, dw - dw * 0.707];
-        }
-      }
-    }
-  }
+  // arc의 rotation + 45도 방향으로 선 그리기
+  const angleRad = ((arcConfig.rotation + 45) * Math.PI) / 180;
+  const endX = cx + dw * Math.cos(angleRad);
+  const endY = cy + dw * Math.sin(angleRad);
 
   return {
-    points,
+    points: [cx, cy, endX, endY],
     stroke: "#374151",
     strokeWidth: 2,
   };
