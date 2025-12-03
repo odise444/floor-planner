@@ -176,6 +176,16 @@
       </div>
     </div>
 
+    <!-- 선택된 가구 정보 -->
+    <div v-if="selectedFurniture" class="absolute top-4 left-4 bg-white rounded-lg shadow p-3 text-sm">
+      <div class="font-medium mb-2">{{ selectedFurniture.name }}</div>
+      <div class="text-gray-600 text-xs space-y-1">
+        <div>{{ selectedFurniture.width }} × {{ selectedFurniture.height }} cm</div>
+        <div>R: 회전 ({{ selectedFurniture.rotation }}°)</div>
+        <div>Delete: 삭제</div>
+      </div>
+    </div>
+
     <!-- 방 생성 모달 -->
     <div
       v-if="showRoomModal"
