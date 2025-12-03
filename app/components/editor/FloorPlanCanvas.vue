@@ -292,6 +292,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import { getDoorArcConfig as getDoorArcConfigUtil } from "~/utils/door";
 
 interface Furniture {
   id: string;
@@ -787,65 +788,18 @@ const onDoorDragEnd = (door: Door, e: any) => {
   door.y = snapped.y;
 };
 
-// 문 열림 호(arc) 설정
+// 문 열림 호(arc) 설정 - 테스트된 유틸 함수 사용
 const getDoorArcConfig = (door: Door) => {
   const dw = door.width * scale;
-  const isHorizontal = door.wall === "top" || door.wall === "bottom";
-  const isInside = door.openDirection === "inside";
-  const isLeftHinge = door.hingeSide === "left";
-
-  // 호 설정
-  let rotation = 0;
-  let x = 0;
-  let y = 0;
-
-  if (isHorizontal) {
-    // 가로 벽 (상/하)
-    x = isLeftHinge ? 0 : dw;
-    y = door.wall === "top" ? 10 : 0;
-
-    if (door.wall === "top") {
-      if (isInside) {
-        rotation = isLeftHinge ? 0 : -90;
-      } else {
-        rotation = isLeftHinge ? -90 : -180;
-      }
-    } else {
-      // bottom
-      if (isInside) {
-        rotation = isLeftHinge ? 90 : 0;
-      } else {
-        rotation = isLeftHinge ? 180 : 90;
-      }
-    }
-  } else {
-    // 세로 벽 (좌/우)
-    x = door.wall === "left" ? 10 : 0;
-    y = isLeftHinge ? 0 : dw;
-
-    if (door.wall === "left") {
-      if (isInside) {
-        rotation = isLeftHinge ? 0 : -90;
-      } else {
-        rotation = isLeftHinge ? 90 : 0;
-      }
-    } else {
-      // right
-      if (isInside) {
-        rotation = isLeftHinge ? -90 : -180;
-      } else {
-        rotation = isLeftHinge ? 0 : -90;
-      }
-    }
-  }
+  const config = getDoorArcConfigUtil(door.wall, door.openDirection, door.hingeSide, dw);
 
   return {
-    x,
-    y,
+    x: config.x,
+    y: config.y,
     innerRadius: 0,
     outerRadius: dw,
     angle: 90,
-    rotation,
+    rotation: config.rotation,
     fill: "transparent",
     stroke: "#6b7280",
     strokeWidth: 1,
