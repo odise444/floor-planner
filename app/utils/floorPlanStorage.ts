@@ -1,5 +1,5 @@
 import type { Furniture } from '~/types/furniture'
-import type { Door } from '~/utils/door'
+import type { Door } from '~/utils/objectEdit'
 
 // 방 타입
 export interface Room {

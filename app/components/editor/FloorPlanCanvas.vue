@@ -420,6 +420,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { getDoorArcConfig as getDoorArcConfigUtil } from "~/utils/door";
 import { applyFurnitureEdit, applyDoorEdit, type FurnitureEditData, type DoorEditData } from "~/utils/objectEdit";
 import { saveFloorPlan, loadFloorPlan, exportToJson } from "~/utils/floorPlanStorage";
+import { useHistory } from "~/composables/useHistory";
 import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
 import DoorEditForm from "~/components/editor/DoorEditForm.vue";
 import type { Furniture, FurnitureShape, LShapeDirection } from "~/types/furniture";
@@ -741,6 +742,58 @@ const selectedDoor = ref<Door | null>(null);
 // 편집 폼 표시 상태 (더블클릭 시 true)
 const showEditForm = ref(false);
 
+// 히스토리 (Undo/Redo)
+interface HistoryState {
+  room: Room | null;
+  furnitureList: Furniture[];
+  doorList: Door[];
+}
+
+const history = useHistory<HistoryState>({ maxHistory: 50 });
+const isRestoringHistory = ref(false);
+
+// 현재 상태를 히스토리에 저장
+const saveToHistory = () => {
+  if (isRestoringHistory.value) return;
+  history.pushState({
+    room: room.value,
+    furnitureList: furnitureList.value,
+    doorList: doorList.value,
+  });
+};
+
+// Undo
+const undo = () => {
+  const state = history.undo();
+  if (state) {
+    isRestoringHistory.value = true;
+    room.value = state.room;
+    furnitureList.value = state.furnitureList;
+    doorList.value = state.doorList;
+    selectedFurniture.value = null;
+    selectedDoor.value = null;
+    nextTick(() => {
+      isRestoringHistory.value = false;
+    });
+  }
+};
+
+// Redo
+const redo = () => {
+  const state = history.redo();
+  if (state) {
+    isRestoringHistory.value = true;
+    room.value = state.room;
+    furnitureList.value = state.furnitureList;
+    doorList.value = state.doorList;
+    selectedFurniture.value = null;
+    selectedDoor.value = null;
+    nextTick(() => {
+      isRestoringHistory.value = false;
+    });
+  }
+};
+
 // 패닝 상태
 const isPanning = ref(false);
 const lastPointerPos = ref({ x: 0, y: 0 });
@@ -1057,6 +1110,7 @@ const createRoom = () => {
   stageConfig.value.scaleX = 1;
   stageConfig.value.scaleY = 1;
   showRoomModal.value = false;
+  saveToHistory();
 };
 
 // 가구 드롭
@@ -1089,6 +1143,7 @@ const onDrop = (event: DragEvent) => {
 
   furnitureList.value.push(newFurniture);
   selectedFurniture.value = newFurniture;
+  saveToHistory();
 };
 
 // 스냅 거리 (px)
@@ -1393,6 +1448,7 @@ const onFurnitureDragEnd = (furniture: Furniture, e: any) => {
   const snapped = snapToAll(leftTop.x, leftTop.y, furniture);
   furniture.x = snapped.x;
   furniture.y = snapped.y;
+  saveToHistory();
 };
 
 // 가구 선택 (클릭 - 선택만)
@@ -1563,6 +1619,7 @@ const onDoorDragEnd = (door: Door, e: any) => {
   door.wall = snapped.wall;
   door.x = snapped.x;
   door.y = snapped.y;
+  saveToHistory();
 };
 
 // 문 열림 호(arc) 설정 - 테스트된 유틸 함수 사용
@@ -1634,6 +1691,7 @@ const createDoor = () => {
   doorList.value.push(newDoor);
   selectedDoor.value = newDoor;
   showDoorModal.value = false;
+  saveToHistory();
 };
 
 // 가구 업데이트
@@ -1648,6 +1706,7 @@ const onFurnitureUpdate = (editData: FurnitureEditData) => {
     const updated = applyFurnitureEdit(target, editData);
     furnitureList.value[index] = updated;
     selectedFurniture.value = updated;
+    saveToHistory();
   }
 };
 
@@ -1658,6 +1717,7 @@ const deleteFurniture = () => {
     (f) => f.id !== selectedFurniture.value?.id
   );
   selectedFurniture.value = null;
+  saveToHistory();
 };
 
 // 문 업데이트
@@ -1672,6 +1732,7 @@ const onDoorUpdate = (editData: DoorEditData) => {
     const updated = applyDoorEdit(target, editData);
     doorList.value[index] = updated;
     selectedDoor.value = updated;
+    saveToHistory();
   }
 };
 
@@ -1682,6 +1743,7 @@ const deleteDoor = () => {
     (d) => d.id !== selectedDoor.value?.id
   );
   selectedDoor.value = null;
+  saveToHistory();
 };
 
 // 키보드 이벤트
@@ -1689,6 +1751,20 @@ const onKeyDown = (e: KeyboardEvent) => {
   // input에 포커스가 있으면 무시
   if ((e.target as HTMLElement).tagName === 'INPUT' ||
       (e.target as HTMLElement).tagName === 'SELECT') {
+    return;
+  }
+
+  // Undo (Ctrl+Z)
+  if (e.ctrlKey && e.key === "z" && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+    return;
+  }
+
+  // Redo (Ctrl+Y 또는 Ctrl+Shift+Z)
+  if ((e.ctrlKey && e.key === "y") || (e.ctrlKey && e.shiftKey && e.key === "Z")) {
+    e.preventDefault();
+    redo();
     return;
   }
 
@@ -1701,6 +1777,7 @@ const onKeyDown = (e: KeyboardEvent) => {
   if (e.key === "r" && selectedFurniture.value) {
     selectedFurniture.value.rotation =
       (selectedFurniture.value.rotation + 90) % 360;
+    saveToHistory();
   }
 
   // Escape로 편집 폼 닫기 또는 선택 해제
@@ -1931,5 +2008,9 @@ defineExpose({
   exportJson,
   exportImage,
   resetViewToRoom,
+  undo,
+  redo,
+  canUndo: history.canUndo,
+  canRedo: history.canRedo,
 });
 </script>
