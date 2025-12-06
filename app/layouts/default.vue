@@ -3,31 +3,6 @@
     <!-- 헤더 -->
     <header class="h-14 bg-white border-b border-gray-200 flex items-center px-4 shrink-0">
       <h1 class="text-lg font-semibold text-gray-800">이사할 때</h1>
-
-      <!-- Undo/Redo 버튼 -->
-      <div class="ml-4 flex items-center gap-1">
-        <button
-          class="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-          :disabled="!canUndo"
-          title="실행 취소 (Ctrl+Z)"
-          @click="onUndo"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-          </svg>
-        </button>
-        <button
-          class="p-1.5 text-gray-500 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-          :disabled="!canRedo"
-          title="다시 실행 (Ctrl+Y)"
-          @click="onRedo"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
-          </svg>
-        </button>
-      </div>
-
       <div class="ml-auto flex items-center gap-2">
         <button
           class="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded"
@@ -120,20 +95,6 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 
 // 전역 상태에서 캔버스 참조 가져오기
 const canvasRef = useState<any>('canvasRef', () => null)
-
-// Undo/Redo 상태
-const canUndo = computed(() => canvasRef.value?.canUndo ?? false)
-const canRedo = computed(() => canvasRef.value?.canRedo ?? false)
-
-// Undo
-const onUndo = () => {
-  canvasRef.value?.undo?.()
-}
-
-// Redo
-const onRedo = () => {
-  canvasRef.value?.redo?.()
-}
 
 // 토스트 메시지 표시
 const showToastMessage = (message: string) => {

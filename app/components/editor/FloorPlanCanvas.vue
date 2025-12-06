@@ -273,10 +273,24 @@
         -
       </button>
       <button
-        class="w-10 h-10 bg-white rounded-lg shadow flex items-center justify-center hover:bg-gray-50 text-xs"
-        @click="resetView"
+        class="w-10 h-10 bg-white rounded-lg shadow flex items-center justify-center hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+        :disabled="!history.canUndo.value"
+        title="실행 취소 (Ctrl+Z)"
+        @click="undo"
       >
-        리셋
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+        </svg>
+      </button>
+      <button
+        class="w-10 h-10 bg-white rounded-lg shadow flex items-center justify-center hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+        :disabled="!history.canRedo.value"
+        title="다시 실행 (Ctrl+Y)"
+        @click="redo"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
+        </svg>
       </button>
     </div>
 
