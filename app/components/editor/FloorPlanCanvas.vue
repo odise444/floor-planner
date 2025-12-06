@@ -32,6 +32,8 @@
             stroke: '#374151',
             strokeWidth: 3,
           }"
+          @mousedown="onRoomMouseDown"
+          @click="onRoomClick"
         />
         <!-- 치수선 표시 -->
         <template v-if="room">
@@ -68,6 +70,7 @@
           :key="door.id"
           :config="getDoorGroupConfig(door)"
           @click="selectDoor(door)"
+          @dblclick="openDoorEditForm(door)"
           @dragend="onDoorDragEnd(door, $event)"
         >
           <!-- 문 프레임 (벽 끊김 표시) -->
@@ -88,6 +91,16 @@
           <v-line
             :config="getDoorPanelConfig(door)"
           />
+          <!-- 문 크기 표시 -->
+          <v-text
+            :config="{
+              text: `${door.width}`,
+              fontSize: 10,
+              fill: '#374151',
+              x: door.wall === 'top' || door.wall === 'bottom' ? (door.width * scale) / 2 - 10 : -15,
+              y: door.wall === 'left' || door.wall === 'right' ? (door.width * scale) / 2 - 5 : -15,
+            }"
+          />
         </v-group>
       </v-layer>
 
@@ -97,16 +110,21 @@
           v-for="furniture in furnitureList"
           :key="furniture.id"
           :config="{
-            x: furniture.x,
-            y: furniture.y,
+            x: furniture.x + (furniture.width * scale) / 2,
+            y: furniture.y + (furniture.height * scale) / 2,
+            offsetX: (furniture.width * scale) / 2,
+            offsetY: (furniture.height * scale) / 2,
             rotation: furniture.rotation,
             draggable: true,
           }"
           @dragmove="onFurnitureDragMove(furniture, $event)"
           @dragend="onFurnitureDragEnd(furniture, $event)"
           @click="selectFurniture(furniture)"
+          @dblclick="openFurnitureEditForm(furniture)"
         >
+          <!-- 사각형 (기본) -->
           <v-rect
+            v-if="!furniture.shape || furniture.shape === 'rect'"
             :config="{
               width: furniture.width * scale,
               height: furniture.height * scale,
@@ -117,6 +135,39 @@
               cornerRadius: 4,
             }"
           />
+          <!-- 원형 -->
+          <v-circle
+            v-else-if="furniture.shape === 'circle'"
+            :config="{
+              x: (furniture.width * scale) / 2,
+              y: (furniture.height * scale) / 2,
+              radius: Math.min(furniture.width, furniture.height) * scale / 2,
+              fill: furniture.color,
+              stroke:
+                selectedFurniture?.id === furniture.id ? '#3b82f6' : '#374151',
+              strokeWidth: selectedFurniture?.id === furniture.id ? 3 : 1,
+            }"
+          />
+          <!-- 타원형 -->
+          <v-ellipse
+            v-else-if="furniture.shape === 'ellipse'"
+            :config="{
+              x: (furniture.width * scale) / 2,
+              y: (furniture.height * scale) / 2,
+              radiusX: (furniture.width * scale) / 2,
+              radiusY: (furniture.height * scale) / 2,
+              fill: furniture.color,
+              stroke:
+                selectedFurniture?.id === furniture.id ? '#3b82f6' : '#374151',
+              strokeWidth: selectedFurniture?.id === furniture.id ? 3 : 1,
+            }"
+          />
+          <!-- L자형 -->
+          <v-line
+            v-else-if="furniture.shape === 'l-shape'"
+            :config="getLShapeConfig(furniture)"
+          />
+          <!-- 가구 이름 -->
           <v-text
             :config="{
               text: furniture.name,
@@ -129,7 +180,59 @@
               padding: 4,
             }"
           />
+          <!-- 가로 치수 (상단 내부 테두리) -->
+          <v-text
+            :config="{
+              text: `${furniture.width}cm`,
+              fontSize: 10,
+              fill: '#374151',
+              x: (furniture.width * scale) / 2,
+              y: 4,
+              offsetX: 15,
+            }"
+          />
+          <!-- 세로 치수 (좌측 내부 테두리) -->
+          <v-text
+            :config="{
+              text: `${furniture.height}cm`,
+              fontSize: 10,
+              fill: '#374151',
+              x: 4,
+              y: (furniture.height * scale) / 2,
+              rotation: -90,
+              offsetX: 15,
+            }"
+          />
         </v-group>
+      </v-layer>
+
+      <!-- 거리 표시 레이어 (선택된 가구가 있을 때만) -->
+      <v-layer v-if="selectedFurniture && room">
+        <!-- 벽/가구까지의 거리선 -->
+        <template v-for="dist in distanceLines" :key="dist.id">
+          <!-- 거리선 -->
+          <v-line
+            :config="{
+              points: dist.points,
+              stroke: dist.color,
+              strokeWidth: 1,
+              dash: [4, 4],
+            }"
+          />
+          <!-- 거리 텍스트 -->
+          <v-text
+            :config="{
+              text: `${dist.distance}cm`,
+              fontSize: 11,
+              fill: dist.color,
+              fontStyle: 'bold',
+              x: dist.textX,
+              y: dist.textY,
+              offsetX: dist.offsetX || 0,
+              offsetY: dist.offsetY || 0,
+            }"
+          />
+        </template>
       </v-layer>
     </v-stage>
 
@@ -166,24 +269,24 @@
     </div>
 
 
-    <!-- 선택된 문 정보 -->
-    <div v-if="selectedDoor" class="absolute top-4 left-4 bg-white rounded-lg shadow p-3 text-sm">
-      <div class="font-medium mb-2">문 설정</div>
-      <div class="text-gray-600 text-xs space-y-1">
-        <div>D: 열림 방향 ({{ selectedDoor.openDirection === 'inside' ? '안쪽' : '바깥쪽' }})</div>
-        <div>H: 경첩 위치 ({{ selectedDoor.hingeSide === 'left' ? '왼쪽' : '오른쪽' }})</div>
-        <div>Delete: 삭제</div>
-      </div>
+    <!-- 선택된 문 편집 폼 (더블클릭 시 표시) -->
+    <div v-if="selectedDoor && showEditForm" class="absolute top-4 left-4">
+      <DoorEditForm
+        :door="selectedDoor"
+        @update="onDoorUpdate"
+        @delete="deleteDoor"
+        @close="closeEditForm"
+      />
     </div>
 
-    <!-- 선택된 가구 정보 -->
-    <div v-if="selectedFurniture" class="absolute top-4 left-4 bg-white rounded-lg shadow p-3 text-sm">
-      <div class="font-medium mb-2">{{ selectedFurniture.name }}</div>
-      <div class="text-gray-600 text-xs space-y-1">
-        <div>{{ selectedFurniture.width }} × {{ selectedFurniture.height }} cm</div>
-        <div>R: 회전 ({{ selectedFurniture.rotation }}°)</div>
-        <div>Delete: 삭제</div>
-      </div>
+    <!-- 선택된 가구 편집 폼 (더블클릭 시 표시) -->
+    <div v-if="selectedFurniture && showEditForm" class="absolute top-4 left-4">
+      <FurnitureEditForm
+        :furniture="selectedFurniture"
+        @update="onFurnitureUpdate"
+        @delete="deleteFurniture"
+        @close="closeEditForm"
+      />
     </div>
 
     <!-- 방 생성 모달 -->
@@ -293,17 +396,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { getDoorArcConfig as getDoorArcConfigUtil } from "~/utils/door";
-
-interface Furniture {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  color: string;
-  rotation: number;
-}
+import { applyFurnitureEdit, applyDoorEdit, type FurnitureEditData, type DoorEditData } from "~/utils/objectEdit";
+import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
+import DoorEditForm from "~/components/editor/DoorEditForm.vue";
+import type { Furniture, FurnitureShape, LShapeDirection } from "~/types/furniture";
 
 interface Room {
   x: number;
@@ -324,6 +420,42 @@ interface Door {
 
 // 1cm = 2px 스케일
 const scale = 2;
+
+// L자형 가구 config 생성
+const getLShapeConfig = (furniture: Furniture) => {
+  const w = furniture.width * scale;
+  const h = furniture.height * scale;
+  const ratio = furniture.lShapeRatio || 0.5;
+  const direction = furniture.lShapeDirection || 'bottom-right';
+
+  // L자 모양의 점들 계산 (닫힌 다각형)
+  let points: number[] = [];
+  const cutW = w * ratio;
+  const cutH = h * ratio;
+
+  switch (direction) {
+    case 'bottom-right': // └ 모양 (왼쪽 위 잘림)
+      points = [0, cutH, cutW, cutH, cutW, 0, w, 0, w, h, 0, h];
+      break;
+    case 'bottom-left': // ┘ 모양 (오른쪽 위 잘림)
+      points = [0, 0, w - cutW, 0, w - cutW, cutH, w, cutH, w, h, 0, h];
+      break;
+    case 'top-right': // ┌ 모양 (왼쪽 아래 잘림)
+      points = [0, 0, w, 0, w, h - cutH, w - cutW, h - cutH, w - cutW, h, 0, h];
+      break;
+    case 'top-left': // ┐ 모양 (오른쪽 아래 잘림)
+      points = [0, 0, w, 0, w, h, cutW, h, cutW, h - cutH, 0, h - cutH];
+      break;
+  }
+
+  return {
+    points,
+    fill: furniture.color,
+    stroke: selectedFurniture.value?.id === furniture.id ? '#3b82f6' : '#374151',
+    strokeWidth: selectedFurniture.value?.id === furniture.id ? 3 : 1,
+    closed: true,
+  };
+};
 
 const containerRef = ref<HTMLElement | null>(null);
 const stageRef = ref<any>(null);
@@ -356,6 +488,9 @@ const selectedFurniture = ref<Furniture | null>(null);
 // 문 상태
 const doorList = ref<Door[]>([]);
 const selectedDoor = ref<Door | null>(null);
+
+// 편집 폼 표시 상태 (더블클릭 시 true)
+const showEditForm = ref(false);
 
 // 패닝 상태
 const isPanning = ref(false);
@@ -399,6 +534,171 @@ const gridLines = computed(() => {
       stroke: y === 0 ? "#9ca3af" : "#d1d5db",
       strokeWidth: y === 0 ? 1 : 0.5,
     });
+  }
+
+  return lines;
+});
+
+// 선택된 가구와 벽/다른 가구 사이의 거리 계산
+interface DistanceLine {
+  id: string;
+  points: number[];
+  distance: number;
+  textX: number;
+  textY: number;
+  offsetX?: number;
+  offsetY?: number;
+  color: string;
+}
+
+// 거리 표시 색상
+const WALL_DISTANCE_COLOR = '#3b82f6';     // 파란색 (벽까지 거리)
+const FURNITURE_DISTANCE_COLOR = '#f97316'; // 주황색 (가구까지 거리)
+
+const distanceLines = computed((): DistanceLine[] => {
+  if (!selectedFurniture.value || !room.value) return [];
+
+  const lines: DistanceLine[] = [];
+  const f = selectedFurniture.value;
+  const r = room.value;
+  const bounds = getFurnitureBounds(f.x, f.y, f);
+
+  // 벽까지의 거리
+  // 왼쪽 벽
+  const distLeft = bounds.left - r.x;
+  if (distLeft > 0) {
+    const midY = (bounds.top + bounds.bottom) / 2;
+    lines.push({
+      id: 'wall-left',
+      points: [r.x, midY, bounds.left, midY],
+      distance: Math.round(distLeft / scale),
+      textX: r.x + distLeft / 2,
+      textY: midY - 8,
+      offsetX: 12,
+      color: WALL_DISTANCE_COLOR,
+    });
+  }
+
+  // 오른쪽 벽
+  const distRight = (r.x + r.width) - bounds.right;
+  if (distRight > 0) {
+    const midY = (bounds.top + bounds.bottom) / 2;
+    lines.push({
+      id: 'wall-right',
+      points: [bounds.right, midY, r.x + r.width, midY],
+      distance: Math.round(distRight / scale),
+      textX: bounds.right + distRight / 2,
+      textY: midY - 8,
+      offsetX: 12,
+      color: WALL_DISTANCE_COLOR,
+    });
+  }
+
+  // 위쪽 벽
+  const distTop = bounds.top - r.y;
+  if (distTop > 0) {
+    const midX = (bounds.left + bounds.right) / 2;
+    lines.push({
+      id: 'wall-top',
+      points: [midX, r.y, midX, bounds.top],
+      distance: Math.round(distTop / scale),
+      textX: midX + 4,
+      textY: r.y + distTop / 2,
+      offsetY: 5,
+      color: WALL_DISTANCE_COLOR,
+    });
+  }
+
+  // 아래쪽 벽
+  const distBottom = (r.y + r.height) - bounds.bottom;
+  if (distBottom > 0) {
+    const midX = (bounds.left + bounds.right) / 2;
+    lines.push({
+      id: 'wall-bottom',
+      points: [midX, bounds.bottom, midX, r.y + r.height],
+      distance: Math.round(distBottom / scale),
+      textX: midX + 4,
+      textY: bounds.bottom + distBottom / 2,
+      offsetY: 5,
+      color: WALL_DISTANCE_COLOR,
+    });
+  }
+
+  // 다른 가구까지의 거리
+  for (const other of furnitureList.value) {
+    if (other.id === f.id) continue;
+
+    const otherBounds = getFurnitureBounds(other.x, other.y, other);
+
+    // Y축이 겹치는 경우 (좌우 거리)
+    const yOverlap = !(bounds.bottom <= otherBounds.top || bounds.top >= otherBounds.bottom);
+    if (yOverlap) {
+      // 다른 가구가 오른쪽에 있는 경우
+      if (otherBounds.left > bounds.right) {
+        const dist = otherBounds.left - bounds.right;
+        const midY = Math.max(bounds.top, otherBounds.top) +
+          (Math.min(bounds.bottom, otherBounds.bottom) - Math.max(bounds.top, otherBounds.top)) / 2;
+        lines.push({
+          id: `furniture-right-${other.id}`,
+          points: [bounds.right, midY, otherBounds.left, midY],
+          distance: Math.round(dist / scale),
+          textX: bounds.right + dist / 2,
+          textY: midY - 8,
+          offsetX: 12,
+          color: FURNITURE_DISTANCE_COLOR,
+        });
+      }
+      // 다른 가구가 왼쪽에 있는 경우
+      if (otherBounds.right < bounds.left) {
+        const dist = bounds.left - otherBounds.right;
+        const midY = Math.max(bounds.top, otherBounds.top) +
+          (Math.min(bounds.bottom, otherBounds.bottom) - Math.max(bounds.top, otherBounds.top)) / 2;
+        lines.push({
+          id: `furniture-left-${other.id}`,
+          points: [otherBounds.right, midY, bounds.left, midY],
+          distance: Math.round(dist / scale),
+          textX: otherBounds.right + dist / 2,
+          textY: midY - 8,
+          offsetX: 12,
+          color: FURNITURE_DISTANCE_COLOR,
+        });
+      }
+    }
+
+    // X축이 겹치는 경우 (상하 거리)
+    const xOverlap = !(bounds.right <= otherBounds.left || bounds.left >= otherBounds.right);
+    if (xOverlap) {
+      // 다른 가구가 아래에 있는 경우
+      if (otherBounds.top > bounds.bottom) {
+        const dist = otherBounds.top - bounds.bottom;
+        const midX = Math.max(bounds.left, otherBounds.left) +
+          (Math.min(bounds.right, otherBounds.right) - Math.max(bounds.left, otherBounds.left)) / 2;
+        lines.push({
+          id: `furniture-bottom-${other.id}`,
+          points: [midX, bounds.bottom, midX, otherBounds.top],
+          distance: Math.round(dist / scale),
+          textX: midX + 4,
+          textY: bounds.bottom + dist / 2,
+          offsetY: 5,
+          color: FURNITURE_DISTANCE_COLOR,
+        });
+      }
+      // 다른 가구가 위에 있는 경우
+      if (otherBounds.bottom < bounds.top) {
+        const dist = bounds.top - otherBounds.bottom;
+        const midX = Math.max(bounds.left, otherBounds.left) +
+          (Math.min(bounds.right, otherBounds.right) - Math.max(bounds.left, otherBounds.left)) / 2;
+        lines.push({
+          id: `furniture-top-${other.id}`,
+          points: [midX, otherBounds.bottom, midX, bounds.top],
+          distance: Math.round(dist / scale),
+          textX: midX + 4,
+          textY: otherBounds.bottom + dist / 2,
+          offsetY: 5,
+          color: FURNITURE_DISTANCE_COLOR,
+        });
+      }
+    }
   }
 
   return lines;
@@ -456,10 +756,25 @@ const onMouseDown = (e: any) => {
     isPanning.value = true;
     const pos = e.target.getStage().getPointerPosition();
     lastPointerPos.value = { x: pos.x, y: pos.y };
-    // 빈 공간 클릭 시 선택 해제
+    // 빈 공간 클릭 시 선택 및 편집 폼 해제
     selectedFurniture.value = null;
     selectedDoor.value = null;
+    showEditForm.value = false;
   }
+};
+
+// 방 클릭 시 패닝 시작
+const onRoomMouseDown = (e: any) => {
+  isPanning.value = true;
+  const pos = e.target.getStage().getPointerPosition();
+  lastPointerPos.value = { x: pos.x, y: pos.y };
+};
+
+// 방 클릭 시 선택 및 편집 폼 해제
+const onRoomClick = () => {
+  selectedFurniture.value = null;
+  selectedDoor.value = null;
+  showEditForm.value = false;
 };
 
 const onMouseMove = (e: any) => {
@@ -527,7 +842,127 @@ const onDrop = (event: DragEvent) => {
 // 스냅 거리 (px)
 const SNAP_THRESHOLD = 15;
 
-// 회전된 가구의 실제 바운딩 박스 계산
+// 두 바운딩 박스가 겹치는지 확인
+const isOverlapping = (
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number }
+): boolean => {
+  return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+};
+
+// 가구 이동 가능 여부 확인 (충돌 감지)
+const canMoveFurniture = (
+  furniture: Furniture,
+  newX: number,
+  newY: number
+): boolean => {
+  const newBounds = getFurnitureBounds(newX, newY, furniture);
+
+  // 벽 충돌 확인
+  if (room.value) {
+    const r = room.value;
+    if (newBounds.left < r.x || newBounds.right > r.x + r.width ||
+        newBounds.top < r.y || newBounds.bottom > r.y + r.height) {
+      return false;
+    }
+  }
+
+  // 다른 가구와 충돌 확인
+  for (const other of furnitureList.value) {
+    if (other.id === furniture.id) continue;
+    const otherBounds = getFurnitureBounds(other.x, other.y, other);
+    if (isOverlapping(newBounds, otherBounds)) {
+      return false;
+    }
+  }
+
+  // 문과 충돌 확인
+  for (const door of doorList.value) {
+    const doorBounds = getDoorBounds(door);
+    if (isOverlapping(newBounds, doorBounds)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+// 문의 바운딩 박스 계산
+const getDoorBounds = (door: Door): { left: number; top: number; right: number; bottom: number } => {
+  if (!room.value) return { left: 0, top: 0, right: 0, bottom: 0 };
+  const r = room.value;
+  const dw = door.width * scale;
+
+  switch (door.wall) {
+    case "top":
+      return {
+        left: r.x + door.x * scale,
+        top: r.y - 5,
+        right: r.x + door.x * scale + dw,
+        bottom: r.y + 5,
+      };
+    case "bottom":
+      return {
+        left: r.x + door.x * scale,
+        top: r.y + r.height - 5,
+        right: r.x + door.x * scale + dw,
+        bottom: r.y + r.height + 5,
+      };
+    case "left":
+      return {
+        left: r.x - 5,
+        top: r.y + door.y * scale,
+        right: r.x + 5,
+        bottom: r.y + door.y * scale + dw,
+      };
+    case "right":
+      return {
+        left: r.x + r.width - 5,
+        top: r.y + door.y * scale,
+        right: r.x + r.width + 5,
+        bottom: r.y + door.y * scale + dw,
+      };
+  }
+};
+
+// 문 이동 가능 여부 확인
+const canMoveDoor = (
+  door: Door,
+  newX: number,
+  newY: number
+): boolean => {
+  if (!room.value) return false;
+
+  // 임시 문 객체 생성
+  const tempDoor = { ...door, x: newX, y: newY };
+  const newBounds = getDoorBounds(tempDoor);
+
+  // 다른 문과 충돌 확인
+  for (const other of doorList.value) {
+    if (other.id === door.id) continue;
+    const otherBounds = getDoorBounds(other);
+    if (isOverlapping(newBounds, otherBounds)) {
+      return false;
+    }
+  }
+
+  // 가구와 충돌 확인
+  for (const furniture of furnitureList.value) {
+    const furnitureBounds = getFurnitureBounds(furniture.x, furniture.y, furniture);
+    if (isOverlapping(newBounds, furnitureBounds)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+// 회전된 가구의 실제 바운딩 박스 계산 (중심점 기준 회전)
+// Konva의 offset + rotation 동작 방식:
+// 1. x, y는 그룹의 위치 (여기서는 furniture.x + w/2, furniture.y + h/2 = 중심점)
+// 2. offsetX, offsetY로 원점을 중심으로 이동 (w/2, h/2)
+// 3. rotation 적용 (중심 기준 회전)
+// 결과: 회전 후에도 중심점은 동일한 위치 유지
 const getFurnitureBounds = (
   x: number,
   y: number,
@@ -537,50 +972,24 @@ const getFurnitureBounds = (
   const h = furniture.height * scale;
   const rotation = furniture.rotation;
 
-  // 회전 각도에 따른 바운딩 박스 계산
-  // Konva는 왼쪽 상단을 원점으로 회전
-  switch (rotation) {
-    case 90:
-      // 90도 회전: 원점 기준 시계방향 회전
-      return {
-        left: x - h,
-        top: y,
-        right: x,
-        bottom: y + w,
-        width: h,
-        height: w,
-      };
-    case 180:
-      // 180도 회전
-      return {
-        left: x - w,
-        top: y - h,
-        right: x,
-        bottom: y,
-        width: w,
-        height: h,
-      };
-    case 270:
-      // 270도 회전
-      return {
-        left: x,
-        top: y - w,
-        right: x + h,
-        bottom: y,
-        width: h,
-        height: w,
-      };
-    default:
-      // 0도 (회전 없음)
-      return {
-        left: x,
-        top: y,
-        right: x + w,
-        bottom: y + h,
-        width: w,
-        height: h,
-      };
-  }
+  // 90도/270도 회전 시 가로/세로가 바뀜
+  const isRotated = rotation === 90 || rotation === 270;
+  const boundW = isRotated ? h : w;
+  const boundH = isRotated ? w : h;
+
+  // 중심점 좌표 (furniture.x, y는 회전 전 왼쪽 상단 기준)
+  const centerX = x + w / 2;
+  const centerY = y + h / 2;
+
+  // 회전 후 바운딩 박스 (중심점 기준)
+  return {
+    left: centerX - boundW / 2,
+    top: centerY - boundH / 2,
+    right: centerX + boundW / 2,
+    bottom: centerY + boundH / 2,
+    width: boundW,
+    height: boundH,
+  };
 };
 
 // 벽과 다른 가구에 스냅 계산
@@ -687,26 +1096,70 @@ const snapToAll = (
   return { x: x + deltaX, y: y + deltaY };
 };
 
-// 가구 드래그 중 (스냅 적용)
+// 가구의 원래 크기 기준 왼쪽 상단 좌표로 변환 (중심점에서)
+const centerToLeftTop = (centerX: number, centerY: number, furniture: Furniture) => {
+  const w = furniture.width * scale;
+  const h = furniture.height * scale;
+  return {
+    x: centerX - w / 2,
+    y: centerY - h / 2,
+  };
+};
+
+// 가구의 원래 크기 기준 왼쪽 상단에서 중심점으로 변환
+const leftTopToCenter = (x: number, y: number, furniture: Furniture) => {
+  const w = furniture.width * scale;
+  const h = furniture.height * scale;
+  return {
+    x: x + w / 2,
+    y: y + h / 2,
+  };
+};
+
+// 가구 드래그 중 (스냅 적용) - 중심점 기준 회전에서 좌표 변환
 const onFurnitureDragMove = (furniture: Furniture, e: any) => {
   const node = e.target;
-  const { x, y } = snapToAll(node.x(), node.y(), furniture);
-  node.x(x);
-  node.y(y);
+
+  // 그룹 위치(중심점)에서 왼쪽 상단 좌표로 변환
+  const leftTop = centerToLeftTop(node.x(), node.y(), furniture);
+
+  const snapped = snapToAll(leftTop.x, leftTop.y, furniture);
+
+  // 스냅된 왼쪽 상단 좌표를 다시 중심 좌표로 변환
+  const center = leftTopToCenter(snapped.x, snapped.y, furniture);
+  node.x(center.x);
+  node.y(center.y);
 };
 
 // 가구 드래그 종료
 const onFurnitureDragEnd = (furniture: Furniture, e: any) => {
   const node = e.target;
-  const { x, y } = snapToAll(node.x(), node.y(), furniture);
-  furniture.x = x;
-  furniture.y = y;
+
+  // 그룹 위치(중심점)에서 왼쪽 상단 좌표로 변환
+  const leftTop = centerToLeftTop(node.x(), node.y(), furniture);
+
+  const snapped = snapToAll(leftTop.x, leftTop.y, furniture);
+  furniture.x = snapped.x;
+  furniture.y = snapped.y;
 };
 
-// 가구 선택
+// 가구 선택 (클릭 - 선택만)
 const selectFurniture = (furniture: Furniture) => {
   selectedFurniture.value = furniture;
   selectedDoor.value = null;
+  showEditForm.value = false;
+};
+
+// 가구 편집 폼 열기 (더블클릭)
+const openFurnitureEditForm = (furniture: Furniture) => {
+  selectedFurniture.value = furniture;
+  selectedDoor.value = null;
+  showEditForm.value = true;
+};
+
+// 편집 폼 닫기
+const closeEditForm = () => {
+  showEditForm.value = false;
 };
 
 // 문 그룹 설정 (위치 + 드래그)
@@ -829,10 +1282,18 @@ const getDoorPanelConfig = (door: Door) => {
   };
 };
 
-// 문 선택
+// 문 선택 (클릭 - 선택만)
 const selectDoor = (door: Door) => {
   selectedDoor.value = door;
   selectedFurniture.value = null;
+  showEditForm.value = false;
+};
+
+// 문 편집 폼 열기 (더블클릭)
+const openDoorEditForm = (door: Door) => {
+  selectedDoor.value = door;
+  selectedFurniture.value = null;
+  showEditForm.value = true;
 };
 
 // 문 추가 (모달에서 호출)
@@ -851,14 +1312,65 @@ const createDoor = () => {
   showDoorModal.value = false;
 };
 
+// 가구 업데이트
+const onFurnitureUpdate = (editData: FurnitureEditData) => {
+  if (!selectedFurniture.value) return;
+
+  const index = furnitureList.value.findIndex(
+    (f) => f.id === selectedFurniture.value?.id
+  );
+  const target = furnitureList.value[index];
+  if (index !== -1 && target) {
+    const updated = applyFurnitureEdit(target, editData);
+    furnitureList.value[index] = updated;
+    selectedFurniture.value = updated;
+  }
+};
+
+// 가구 삭제
+const deleteFurniture = () => {
+  if (!selectedFurniture.value) return;
+  furnitureList.value = furnitureList.value.filter(
+    (f) => f.id !== selectedFurniture.value?.id
+  );
+  selectedFurniture.value = null;
+};
+
+// 문 업데이트
+const onDoorUpdate = (editData: DoorEditData) => {
+  if (!selectedDoor.value) return;
+
+  const index = doorList.value.findIndex(
+    (d) => d.id === selectedDoor.value?.id
+  );
+  const target = doorList.value[index];
+  if (index !== -1 && target) {
+    const updated = applyDoorEdit(target, editData);
+    doorList.value[index] = updated;
+    selectedDoor.value = updated;
+  }
+};
+
+// 문 삭제
+const deleteDoor = () => {
+  if (!selectedDoor.value) return;
+  doorList.value = doorList.value.filter(
+    (d) => d.id !== selectedDoor.value?.id
+  );
+  selectedDoor.value = null;
+};
+
 // 키보드 이벤트
 const onKeyDown = (e: KeyboardEvent) => {
+  // input에 포커스가 있으면 무시
+  if ((e.target as HTMLElement).tagName === 'INPUT' ||
+      (e.target as HTMLElement).tagName === 'SELECT') {
+    return;
+  }
+
   // 가구 삭제
   if (e.key === "Delete" && selectedFurniture.value) {
-    furnitureList.value = furnitureList.value.filter(
-      (f) => f.id !== selectedFurniture.value?.id
-    );
-    selectedFurniture.value = null;
+    deleteFurniture();
   }
 
   // 가구 회전
@@ -867,12 +1379,19 @@ const onKeyDown = (e: KeyboardEvent) => {
       (selectedFurniture.value.rotation + 90) % 360;
   }
 
+  // Escape로 편집 폼 닫기 또는 선택 해제
+  if (e.key === "Escape") {
+    if (showEditForm.value) {
+      showEditForm.value = false;
+    } else {
+      selectedFurniture.value = null;
+      selectedDoor.value = null;
+    }
+  }
+
   // 문 삭제
   if (e.key === "Delete" && selectedDoor.value) {
-    doorList.value = doorList.value.filter(
-      (d) => d.id !== selectedDoor.value?.id
-    );
-    selectedDoor.value = null;
+    deleteDoor();
   }
 
   // 문 열림 방향 전환 (D키)
@@ -885,6 +1404,85 @@ const onKeyDown = (e: KeyboardEvent) => {
   if (e.key === "h" && selectedDoor.value) {
     selectedDoor.value.hingeSide =
       selectedDoor.value.hingeSide === "left" ? "right" : "left";
+  }
+
+  // Enter로 편집 폼 열기
+  if (e.key === "Enter") {
+    if (selectedFurniture.value && !showEditForm.value) {
+      showEditForm.value = true;
+    } else if (selectedDoor.value && !showEditForm.value) {
+      showEditForm.value = true;
+    }
+  }
+
+  // 화살표 키로 가구 이동 (충돌 감지 적용)
+  const MOVE_STEP = e.shiftKey ? 10 : 1; // Shift 누르면 10cm, 아니면 1cm
+  if (selectedFurniture.value) {
+    const f = selectedFurniture.value;
+    let newX = f.x;
+    let newY = f.y;
+
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      newX = f.x - MOVE_STEP * scale;
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      newX = f.x + MOVE_STEP * scale;
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      newY = f.y - MOVE_STEP * scale;
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      newY = f.y + MOVE_STEP * scale;
+    }
+
+    // 충돌이 없을 때만 이동
+    if (canMoveFurniture(f, newX, newY)) {
+      f.x = newX;
+      f.y = newY;
+    }
+  }
+
+  // 화살표 키로 문 이동 (벽 따라, 충돌 감지 적용)
+  if (selectedDoor.value) {
+    const d = selectedDoor.value;
+    const isHorizontalWall = d.wall === "top" || d.wall === "bottom";
+
+    if (isHorizontalWall) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        const newX = Math.max(0, d.x - MOVE_STEP);
+        if (canMoveDoor(d, newX, d.y)) {
+          d.x = newX;
+        }
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (room.value) {
+          const maxX = (room.value.width / scale) - d.width;
+          const newX = Math.min(maxX, d.x + MOVE_STEP);
+          if (canMoveDoor(d, newX, d.y)) {
+            d.x = newX;
+          }
+        }
+      }
+    } else {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const newY = Math.max(0, d.y - MOVE_STEP);
+        if (canMoveDoor(d, d.x, newY)) {
+          d.y = newY;
+        }
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (room.value) {
+          const maxY = (room.value.height / scale) - d.width;
+          const newY = Math.min(maxY, d.y + MOVE_STEP);
+          if (canMoveDoor(d, d.x, newY)) {
+            d.y = newY;
+          }
+        }
+      }
+    }
   }
 };
 
