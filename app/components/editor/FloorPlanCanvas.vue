@@ -419,6 +419,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { getDoorArcConfig as getDoorArcConfigUtil } from "~/utils/door";
 import { applyFurnitureEdit, applyDoorEdit, type FurnitureEditData, type DoorEditData } from "~/utils/objectEdit";
+import { saveFloorPlan, loadFloorPlan, exportToJson } from "~/utils/floorPlanStorage";
 import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
 import DoorEditForm from "~/components/editor/DoorEditForm.vue";
 import type { Furniture, FurnitureShape, LShapeDirection } from "~/types/furniture";
@@ -1832,13 +1833,103 @@ onUnmounted(() => {
   window.removeEventListener("keydown", onKeyDown);
 });
 
+// 저장 기능
+const saveToLocalStorage = () => {
+  saveFloorPlan({
+    room: room.value,
+    furnitureList: furnitureList.value,
+    doorList: doorList.value,
+  });
+};
+
+// 뷰를 방 위치에 맞춰 조정
+const resetViewToRoom = () => {
+  if (!room.value) return;
+
+  const padding = 50;
+  stageConfig.value.x = padding - room.value.x + padding;
+  stageConfig.value.y = padding - room.value.y + padding;
+  stageConfig.value.scaleX = 1;
+  stageConfig.value.scaleY = 1;
+};
+
+// 불러오기 기능
+const loadFromLocalStorage = () => {
+  const data = loadFloorPlan();
+  if (data) {
+    room.value = data.room;
+    furnitureList.value = data.furnitureList || [];
+    doorList.value = data.doorList || [];
+    selectedFurniture.value = null;
+    selectedDoor.value = null;
+    nextTick(() => resetViewToRoom());
+    return true;
+  }
+  return false;
+};
+
+// JSON 파일로 내보내기
+const exportJson = () => {
+  exportToJson({
+    room: room.value,
+    furnitureList: furnitureList.value,
+    doorList: doorList.value,
+  });
+};
+
+// 이미지로 내보내기
+const exportImage = (format: 'png' | 'jpeg' = 'png') => {
+  if (!stageRef.value || !room.value) return;
+
+  const stage = stageRef.value.getNode();
+
+  // 현재 상태 저장
+  const oldPos = { x: stage.x(), y: stage.y() };
+  const oldScale = { x: stage.scaleX(), y: stage.scaleY() };
+
+  // 방 영역에 맞춰 설정 (여백 포함)
+  const padding = 50;
+  const r = room.value;
+
+  stage.position({ x: padding - r.x, y: padding - r.y });
+  stage.scale({ x: 1, y: 1 });
+
+  // 이미지 생성
+  const dataURL = stage.toDataURL({
+    x: 0,
+    y: 0,
+    width: r.width + padding * 2,
+    height: r.height + padding * 2,
+    pixelRatio: 2,
+    mimeType: format === 'jpeg' ? 'image/jpeg' : 'image/png',
+    quality: 0.95,
+  });
+
+  // 상태 복원
+  stage.position(oldPos);
+  stage.scale(oldScale);
+
+  // 다운로드
+  const a = document.createElement('a');
+  a.href = dataURL;
+  a.download = `floor-plan-${new Date().toISOString().slice(0, 10)}.${format}`;
+  a.click();
+};
+
 // 외부에서 접근 가능하도록 노출
 defineExpose({
   room,
+  furnitureList,
+  doorList,
   showDoorModal,
   doorWall,
   doorPosition,
   doorWidth,
   createDoor,
+  saveToLocalStorage,
+  loadFromLocalStorage,
+  exportJson,
+  exportImage,
+  resetViewToRoom,
 });
 </script>
