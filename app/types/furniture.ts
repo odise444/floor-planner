@@ -17,7 +17,9 @@ export interface Furniture {
   shape?: FurnitureShape  // 기본값: 'rect'
   // L자형 가구 전용 속성
   lShapeDirection?: LShapeDirection  // L자 방향
-  lShapeRatio?: number  // L자 비율 (0.3 ~ 0.7, 기본 0.5)
+  lShapeRatio?: number  // L자 비율 (0.2 ~ 0.8, 기본 0.5) - 단일 비율용
+  lShapeRatioW?: number  // L자 가로 비율 (0.2 ~ 0.8)
+  lShapeRatioH?: number  // L자 세로 비율 (0.2 ~ 0.8)
 }
 
 // 가구 라이브러리 아이템 타입

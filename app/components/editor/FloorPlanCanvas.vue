@@ -105,10 +105,11 @@
       </v-layer>
 
       <!-- 가구 레이어 -->
-      <v-layer>
+      <v-layer ref="furnitureLayerRef">
         <v-group
           v-for="furniture in furnitureList"
           :key="furniture.id"
+          :ref="(el: any) => setFurnitureRef(furniture.id, el)"
           :config="{
             x: furniture.x + (furniture.width * scale) / 2,
             y: furniture.y + (furniture.height * scale) / 2,
@@ -116,11 +117,13 @@
             offsetY: (furniture.height * scale) / 2,
             rotation: furniture.rotation,
             draggable: true,
+            name: `furniture-${furniture.id}`,
           }"
           @dragmove="onFurnitureDragMove(furniture, $event)"
           @dragend="onFurnitureDragEnd(furniture, $event)"
           @click="selectFurniture(furniture)"
           @dblclick="openFurnitureEditForm(furniture)"
+          @transformend="onFurnitureTransformEnd(furniture, $event)"
         >
           <!-- 사각형 (기본) -->
           <v-rect
@@ -169,16 +172,7 @@
           />
           <!-- 가구 이름 -->
           <v-text
-            :config="{
-              text: furniture.name,
-              fontSize: 12,
-              fill: '#ffffff',
-              width: furniture.width * scale,
-              height: furniture.height * scale,
-              align: 'center',
-              verticalAlign: 'middle',
-              padding: 4,
-            }"
+            :config="getFurnitureTextConfig(furniture)"
           />
           <!-- 가로 치수 (상단 내부 테두리) -->
           <v-text
@@ -204,6 +198,34 @@
             }"
           />
         </v-group>
+        <!-- 리사이즈 트랜스포머 (선택된 가구에 표시) -->
+        <v-transformer
+          v-if="selectedFurniture"
+          ref="transformerRef"
+          :config="{
+            rotateEnabled: false,
+            keepRatio: false,
+            enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top-center', 'bottom-center', 'middle-left', 'middle-right'],
+            boundBoxFunc: boundBoxFunc,
+            anchorSize: 10,
+            anchorCornerRadius: 2,
+            borderStroke: '#3b82f6',
+            anchorStroke: '#3b82f6',
+            anchorFill: '#ffffff',
+          }"
+        />
+        <!-- L자형 비율 조절 핸들 (가로 방향) -->
+        <v-rect
+          v-if="selectedFurniture?.shape === 'l-shape'"
+          :config="getLShapeHandleHorizontal(selectedFurniture)"
+          @dragmove="onLShapeHandleDragH(selectedFurniture, $event)"
+        />
+        <!-- L자형 비율 조절 핸들 (세로 방향) -->
+        <v-rect
+          v-if="selectedFurniture?.shape === 'l-shape'"
+          :config="getLShapeHandleVertical(selectedFurniture)"
+          @dragmove="onLShapeHandleDragV(selectedFurniture, $event)"
+        />
       </v-layer>
 
       <!-- 거리 표시 레이어 (선택된 가구가 있을 때만) -->
@@ -394,7 +416,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { getDoorArcConfig as getDoorArcConfigUtil } from "~/utils/door";
 import { applyFurnitureEdit, applyDoorEdit, type FurnitureEditData, type DoorEditData } from "~/utils/objectEdit";
 import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
@@ -425,13 +447,14 @@ const scale = 2;
 const getLShapeConfig = (furniture: Furniture) => {
   const w = furniture.width * scale;
   const h = furniture.height * scale;
-  const ratio = furniture.lShapeRatio || 0.5;
+  const ratioW = furniture.lShapeRatioW ?? furniture.lShapeRatio ?? 0.5;
+  const ratioH = furniture.lShapeRatioH ?? furniture.lShapeRatio ?? 0.5;
   const direction = furniture.lShapeDirection || 'bottom-right';
 
   // L자 모양의 점들 계산 (닫힌 다각형)
   let points: number[] = [];
-  const cutW = w * ratio;
-  const cutH = h * ratio;
+  const cutW = w * ratioW;
+  const cutH = h * ratioH;
 
   switch (direction) {
     case 'bottom-right': // └ 모양 (왼쪽 위 잘림)
@@ -457,8 +480,233 @@ const getLShapeConfig = (furniture: Furniture) => {
   };
 };
 
+// 가구 이름 텍스트 config
+const getFurnitureTextConfig = (furniture: Furniture) => {
+  const w = furniture.width * scale;
+  const h = furniture.height * scale;
+
+  // L자형이 아닌 경우 기본 중앙 정렬
+  if (furniture.shape !== 'l-shape') {
+    return {
+      text: furniture.name,
+      fontSize: 12,
+      fill: '#ffffff',
+      width: w,
+      height: h,
+      align: 'center',
+      verticalAlign: 'middle',
+      padding: 4,
+    };
+  }
+
+  // L자형: 넓은 영역에 텍스트 배치
+  const ratioW = furniture.lShapeRatioW ?? furniture.lShapeRatio ?? 0.5;
+  const ratioH = furniture.lShapeRatioH ?? furniture.lShapeRatio ?? 0.5;
+  const direction = furniture.lShapeDirection || 'bottom-right';
+  const cutW = w * ratioW;
+  const cutH = h * ratioH;
+
+  // L자형의 두 영역 중 더 넓은 곳 (하단 또는 우측 막대)
+  let textX = 0;
+  let textY = 0;
+  let textW = w;
+  let textH = h;
+
+  switch (direction) {
+    case 'bottom-right': // └ 모양 - 하단 막대가 넓음
+      textX = 0;
+      textY = cutH;
+      textW = w;
+      textH = h - cutH;
+      break;
+    case 'bottom-left': // ┘ 모양 - 하단 막대
+      textX = 0;
+      textY = cutH;
+      textW = w;
+      textH = h - cutH;
+      break;
+    case 'top-right': // ┌ 모양 - 상단 막대
+      textX = 0;
+      textY = 0;
+      textW = w;
+      textH = h - cutH;
+      break;
+    case 'top-left': // ┐ 모양 - 상단 막대
+      textX = 0;
+      textY = 0;
+      textW = w;
+      textH = h - cutH;
+      break;
+  }
+
+  return {
+    text: furniture.name,
+    fontSize: 12,
+    fill: '#ffffff',
+    x: textX,
+    y: textY,
+    width: textW,
+    height: textH,
+    align: 'center',
+    verticalAlign: 'middle',
+    padding: 4,
+  };
+};
+
+// L자형 가로 핸들 (cutW 조절)
+const getLShapeHandleHorizontal = (furniture: Furniture) => {
+  const w = furniture.width * scale;
+  const h = furniture.height * scale;
+  const ratioW = furniture.lShapeRatioW ?? furniture.lShapeRatio ?? 0.5;
+  const ratioH = furniture.lShapeRatioH ?? furniture.lShapeRatio ?? 0.5;
+  const direction = furniture.lShapeDirection || 'bottom-right';
+  const cutW = w * ratioW;
+  const cutH = h * ratioH;
+
+  let x = 0;
+  let y = 0;
+
+  switch (direction) {
+    case 'bottom-right':
+      x = furniture.x + cutW;
+      y = furniture.y + cutH / 2;
+      break;
+    case 'bottom-left':
+      x = furniture.x + w - cutW;
+      y = furniture.y + cutH / 2;
+      break;
+    case 'top-right':
+      x = furniture.x + w - cutW;
+      y = furniture.y + h - cutH / 2;
+      break;
+    case 'top-left':
+      x = furniture.x + cutW;
+      y = furniture.y + h - cutH / 2;
+      break;
+  }
+
+  return {
+    x: x - 5,
+    y: y - 8,
+    width: 10,
+    height: 16,
+    fill: '#3b82f6',
+    stroke: '#ffffff',
+    strokeWidth: 2,
+    cornerRadius: 3,
+    draggable: true,
+    hitStrokeWidth: 10,
+  };
+};
+
+// L자형 세로 핸들 (cutH 조절)
+const getLShapeHandleVertical = (furniture: Furniture) => {
+  const w = furniture.width * scale;
+  const h = furniture.height * scale;
+  const ratioW = furniture.lShapeRatioW ?? furniture.lShapeRatio ?? 0.5;
+  const ratioH = furniture.lShapeRatioH ?? furniture.lShapeRatio ?? 0.5;
+  const direction = furniture.lShapeDirection || 'bottom-right';
+  const cutW = w * ratioW;
+  const cutH = h * ratioH;
+
+  let x = 0;
+  let y = 0;
+
+  switch (direction) {
+    case 'bottom-right':
+      x = furniture.x + cutW / 2;
+      y = furniture.y + cutH;
+      break;
+    case 'bottom-left':
+      x = furniture.x + w - cutW / 2;
+      y = furniture.y + cutH;
+      break;
+    case 'top-right':
+      x = furniture.x + w - cutW / 2;
+      y = furniture.y + h - cutH;
+      break;
+    case 'top-left':
+      x = furniture.x + cutW / 2;
+      y = furniture.y + h - cutH;
+      break;
+  }
+
+  return {
+    x: x - 8,
+    y: y - 5,
+    width: 16,
+    height: 10,
+    fill: '#3b82f6',
+    stroke: '#ffffff',
+    strokeWidth: 2,
+    cornerRadius: 3,
+    draggable: true,
+    hitStrokeWidth: 10,
+  };
+};
+
+// L자형 가로 핸들 드래그
+const onLShapeHandleDragH = (furniture: Furniture, e: any) => {
+  const node = e.target;
+  const w = furniture.width * scale;
+  const direction = furniture.lShapeDirection || 'bottom-right';
+
+  const handleX = node.x() + 5;
+  const localX = handleX - furniture.x;
+
+  let newRatio = 0.5;
+  switch (direction) {
+    case 'bottom-right':
+    case 'top-left':
+      newRatio = localX / w;
+      break;
+    case 'bottom-left':
+    case 'top-right':
+      newRatio = (w - localX) / w;
+      break;
+  }
+
+  furniture.lShapeRatioW = Math.max(0.2, Math.min(0.8, Math.round(newRatio * 100) / 100));
+};
+
+// L자형 세로 핸들 드래그
+const onLShapeHandleDragV = (furniture: Furniture, e: any) => {
+  const node = e.target;
+  const h = furniture.height * scale;
+  const direction = furniture.lShapeDirection || 'bottom-right';
+
+  const handleY = node.y() + 5;
+  const localY = handleY - furniture.y;
+
+  let newRatio = 0.5;
+  switch (direction) {
+    case 'bottom-right':
+    case 'bottom-left':
+      newRatio = localY / h;
+      break;
+    case 'top-right':
+    case 'top-left':
+      newRatio = (h - localY) / h;
+      break;
+  }
+
+  furniture.lShapeRatioH = Math.max(0.2, Math.min(0.8, Math.round(newRatio * 100) / 100));
+};
+
 const containerRef = ref<HTMLElement | null>(null);
 const stageRef = ref<any>(null);
+const furnitureLayerRef = ref<any>(null);
+const transformerRef = ref<any>(null);
+const furnitureRefs = ref<Map<string, any>>(new Map());
+
+// 가구 그룹 ref 설정
+const setFurnitureRef = (id: string, el: any) => {
+  if (el) {
+    furnitureRefs.value.set(id, el);
+  } else {
+    furnitureRefs.value.delete(id);
+  }
+};
 
 const stageConfig = ref({
   width: 800,
@@ -833,6 +1081,9 @@ const onDrop = (event: DragEvent) => {
     height: item.height,
     color: item.color,
     rotation: 0,
+    shape: item.shape,
+    lShapeDirection: item.lShapeDirection,
+    lShapeRatio: item.lShapeRatio,
   };
 
   furnitureList.value.push(newFurniture);
@@ -1148,6 +1399,7 @@ const selectFurniture = (furniture: Furniture) => {
   selectedFurniture.value = furniture;
   selectedDoor.value = null;
   showEditForm.value = false;
+  updateTransformer();
 };
 
 // 가구 편집 폼 열기 (더블클릭)
@@ -1155,12 +1407,83 @@ const openFurnitureEditForm = (furniture: Furniture) => {
   selectedFurniture.value = furniture;
   selectedDoor.value = null;
   showEditForm.value = true;
+  updateTransformer();
 };
 
 // 편집 폼 닫기
 const closeEditForm = () => {
   showEditForm.value = false;
 };
+
+// Transformer 업데이트 (선택된 가구에 연결)
+const updateTransformer = () => {
+  nextTick(() => {
+    if (!transformerRef.value || !selectedFurniture.value) return;
+
+    const transformer = transformerRef.value.getNode();
+    const furnitureGroup = furnitureRefs.value.get(selectedFurniture.value.id);
+
+    if (transformer && furnitureGroup) {
+      const node = furnitureGroup.getNode ? furnitureGroup.getNode() : furnitureGroup;
+      transformer.nodes([node]);
+      transformer.getLayer()?.batchDraw();
+    }
+  });
+};
+
+// 최소/최대 크기 제한 함수
+const MIN_SIZE = 20 * scale; // 최소 20cm
+const MAX_SIZE = 500 * scale; // 최대 500cm
+
+const boundBoxFunc = (oldBox: any, newBox: any) => {
+  // 최소 크기 제한
+  if (newBox.width < MIN_SIZE || newBox.height < MIN_SIZE) {
+    return oldBox;
+  }
+  // 최대 크기 제한
+  if (newBox.width > MAX_SIZE || newBox.height > MAX_SIZE) {
+    return oldBox;
+  }
+  return newBox;
+};
+
+// 가구 변환 완료 (리사이즈)
+const onFurnitureTransformEnd = (furniture: Furniture, e: any) => {
+  const node = e.target;
+
+  // 스케일과 위치 가져오기
+  const scaleX = node.scaleX();
+  const scaleY = node.scaleY();
+
+  // 새 크기 계산 (픽셀 -> cm)
+  const newWidth = Math.round((furniture.width * scaleX));
+  const newHeight = Math.round((furniture.height * scaleY));
+
+  // 스케일 리셋 (크기 변환을 width/height로 적용)
+  node.scaleX(1);
+  node.scaleY(1);
+
+  // 가구 크기 업데이트
+  furniture.width = Math.max(10, Math.min(500, newWidth));
+  furniture.height = Math.max(10, Math.min(500, newHeight));
+
+  // 위치 업데이트 (중심점 기준)
+  const leftTop = centerToLeftTop(node.x(), node.y(), furniture);
+  furniture.x = leftTop.x;
+  furniture.y = leftTop.y;
+
+  // offset 업데이트
+  node.offsetX((furniture.width * scale) / 2);
+  node.offsetY((furniture.height * scale) / 2);
+
+  // Transformer 다시 연결
+  updateTransformer();
+};
+
+// selectedFurniture 변경 시 Transformer 업데이트
+watch(selectedFurniture, () => {
+  updateTransformer();
+});
 
 // 문 그룹 설정 (위치 + 드래그)
 const getDoorGroupConfig = (door: Door) => {
