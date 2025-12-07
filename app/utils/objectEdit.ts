@@ -20,6 +20,7 @@ export interface Furniture {
   height: number
   color: string
   rotation: number
+  zIndex: number  // 레이어 순서
   shape?: FurnitureShape
   lShapeDirection?: LShapeDirection
   lShapeRatio?: number

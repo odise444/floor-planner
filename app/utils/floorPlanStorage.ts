@@ -7,6 +7,7 @@ export interface Room {
   y: number
   width: number
   height: number
+  opacity: number
 }
 
 // 평면도 데이터 타입

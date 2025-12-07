@@ -23,17 +23,22 @@
       <v-layer>
         <v-rect
           v-if="room"
+          ref="roomRectRef"
           :config="{
             x: room.x,
             y: room.y,
             width: room.width,
             height: room.height,
             fill: '#ffffff',
-            stroke: '#374151',
-            strokeWidth: 3,
+            stroke: isRoomSelected ? '#3b82f6' : '#374151',
+            strokeWidth: isRoomSelected ? 4 : 3,
+            opacity: room.opacity,
+            name: 'room',
           }"
           @mousedown="onRoomMouseDown"
           @click="onRoomClick"
+          @dblclick="openRoomEditForm"
+          @transformend="onRoomTransformEnd"
         />
         <!-- 치수선 표시 -->
         <template v-if="room">
@@ -102,6 +107,39 @@
             }"
           />
         </v-group>
+        <!-- 방 리사이즈 트랜스포머 -->
+        <v-transformer
+          v-if="isRoomSelected && room"
+          ref="roomTransformerRef"
+          :config="{
+            rotateEnabled: false,
+            keepRatio: false,
+            enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top-center', 'bottom-center', 'middle-left', 'middle-right'],
+            anchorSize: 12,
+            anchorCornerRadius: 2,
+            borderStroke: '#3b82f6',
+            anchorStroke: '#3b82f6',
+            anchorFill: '#ffffff',
+            boundBoxFunc: roomBoundBoxFunc,
+          }"
+        />
+      </v-layer>
+
+      <!-- 평면도 이미지 레이어 (방 위에 표시) -->
+      <v-layer>
+        <v-image
+          v-if="floorPlanImage && floorPlanImageElement"
+          :config="{
+            x: floorPlanImage.x,
+            y: floorPlanImage.y,
+            image: floorPlanImageElement,
+            width: floorPlanImage.width * floorPlanImage.scale,
+            height: floorPlanImage.height * floorPlanImage.scale,
+            opacity: floorPlanImage.opacity,
+            draggable: !floorPlanImage.locked,
+          }"
+          @dragend="onFloorPlanImageDragEnd"
+        />
       </v-layer>
 
       <!-- 가구 레이어 -->
@@ -132,9 +170,8 @@
               width: furniture.width * scale,
               height: furniture.height * scale,
               fill: furniture.color,
-              stroke:
-                selectedFurniture?.id === furniture.id ? '#3b82f6' : '#374151',
-              strokeWidth: selectedFurniture?.id === furniture.id ? 3 : 1,
+              stroke: '#374151',
+              strokeWidth: 1,
               cornerRadius: 4,
             }"
           />
@@ -146,9 +183,8 @@
               y: (furniture.height * scale) / 2,
               radius: Math.min(furniture.width, furniture.height) * scale / 2,
               fill: furniture.color,
-              stroke:
-                selectedFurniture?.id === furniture.id ? '#3b82f6' : '#374151',
-              strokeWidth: selectedFurniture?.id === furniture.id ? 3 : 1,
+              stroke: '#374151',
+              strokeWidth: 1,
             }"
           />
           <!-- 타원형 -->
@@ -160,9 +196,8 @@
               radiusX: (furniture.width * scale) / 2,
               radiusY: (furniture.height * scale) / 2,
               fill: furniture.color,
-              stroke:
-                selectedFurniture?.id === furniture.id ? '#3b82f6' : '#374151',
-              strokeWidth: selectedFurniture?.id === furniture.id ? 3 : 1,
+              stroke: '#374151',
+              strokeWidth: 1,
             }"
           />
           <!-- L자형 -->
@@ -256,10 +291,138 @@
           />
         </template>
       </v-layer>
-    </v-stage>
+
+      <!-- 측정 레이어 -->
+      <v-layer>
+      <!-- 완료된 측정들 -->
+      <template v-for="m in measurements" :key="m.id">
+        <v-line
+          class="measurement-line"
+          :config="{
+            points: [m.start.x, m.start.y, m.end.x, m.end.y],
+            stroke: '#ef4444',
+            strokeWidth: 2,
+            dash: [6, 4],
+          }"
+        />
+        <!-- 시작점 -->
+        <v-circle
+          :config="{
+            x: m.start.x,
+            y: m.start.y,
+            radius: 4,
+            fill: '#ef4444',
+          }"
+        />
+        <!-- 끝점 -->
+        <v-circle
+          :config="{
+            x: m.end.x,
+            y: m.end.y,
+            radius: 4,
+            fill: '#ef4444',
+          }"
+        />
+        <!-- 거리 텍스트 -->
+        <v-text
+          :config="{
+            x: (m.start.x + m.end.x) / 2,
+            y: (m.start.y + m.end.y) / 2 - 12,
+            text: formatDistance(m.distance, scale),
+            fontSize: 14,
+            fontStyle: 'bold',
+            fill: '#ef4444',
+            offsetX: 20,
+          }"
+        />
+      </template>
+      <!-- 현재 측정 중인 선 (시작점이 설정되고 마우스 이동 중) -->
+      <template v-if="measureStartPoint && measureCurrentPoint">
+        <v-line
+          :config="{
+            points: [measureStartPoint.x, measureStartPoint.y, measureCurrentPoint.x, measureCurrentPoint.y],
+            stroke: '#f97316',
+            strokeWidth: 2,
+            dash: [6, 4],
+          }"
+        />
+        <!-- 시작점 -->
+        <v-circle
+          :config="{
+            x: measureStartPoint.x,
+            y: measureStartPoint.y,
+            radius: 4,
+            fill: '#f97316',
+          }"
+        />
+        <!-- 현재 점 -->
+        <v-circle
+          :config="{
+            x: measureCurrentPoint.x,
+            y: measureCurrentPoint.y,
+            radius: 4,
+            fill: '#f97316',
+          }"
+        />
+      </template>
+      <!-- 시작점만 설정된 경우 -->
+      <template v-else-if="measureStartPoint">
+        <v-circle
+          :config="{
+            x: measureStartPoint.x,
+            y: measureStartPoint.y,
+            radius: 5,
+            fill: '#f97316',
+            stroke: '#ffffff',
+            strokeWidth: 2,
+          }"
+        />
+      </template>
+    </v-layer>
+  </v-stage>
+
+    <!-- 측정 모드 표시 -->
+    <div v-if="isMeasureMode" class="absolute top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow">
+      <span>측정 모드</span>
+      <span v-if="measureStartPoint" class="ml-2 text-sm opacity-75">클릭하여 끝점 설정</span>
+      <span v-else class="ml-2 text-sm opacity-75">클릭하여 시작점 설정</span>
+    </div>
 
     <!-- 줌 컨트롤 -->
     <div class="absolute bottom-4 right-4 flex flex-col gap-2">
+      <!-- 레이어 패널 버튼 -->
+      <button
+        class="w-10 h-10 rounded-lg shadow flex items-center justify-center"
+        :class="showLayerPanel ? 'bg-blue-500 text-white' : 'bg-white hover:bg-gray-50'"
+        title="레이어 패널 (L)"
+        @click="showLayerPanel = !showLayerPanel"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      </button>
+      <!-- 측정 버튼 -->
+      <button
+        class="w-10 h-10 rounded-lg shadow flex items-center justify-center"
+        :class="isMeasureMode ? 'bg-red-500 text-white' : 'bg-white hover:bg-gray-50'"
+        title="측정 도구 (M)"
+        @click="toggleMeasureMode"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2v16z" />
+        </svg>
+      </button>
+      <!-- 측정 초기화 버튼 -->
+      <button
+        v-if="measurements.length > 0"
+        class="w-10 h-10 bg-white rounded-lg shadow flex items-center justify-center hover:bg-gray-50"
+        title="측정 초기화"
+        @click="clearMeasurements"
+      >
+        <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
       <button
         class="w-10 h-10 bg-white rounded-lg shadow flex items-center justify-center hover:bg-gray-50"
         @click="zoomIn"
@@ -292,6 +455,78 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
         </svg>
       </button>
+      <!-- 평면도 업로드 버튼 -->
+      <button
+        class="w-10 h-10 bg-white rounded-lg shadow flex items-center justify-center hover:bg-gray-50"
+        title="평면도 이미지 업로드"
+        @click="triggerFloorPlanUpload"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- 평면도 이미지 파일 input (숨김) -->
+    <input
+      ref="floorPlanImageRef"
+      type="file"
+      accept="image/*"
+      class="hidden"
+      @change="handleFloorPlanFileChange"
+    />
+
+    <!-- 평면도 이미지 컨트롤 패널 -->
+    <div v-if="floorPlanImage" class="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-4 w-64">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-sm font-medium text-gray-700">평면도 이미지</span>
+        <div class="flex gap-1">
+          <button
+            class="p-1.5 rounded hover:bg-gray-100"
+            :class="floorPlanImage.locked ? 'text-blue-500' : 'text-gray-400'"
+            title="잠금"
+            @click="toggleFloorPlanLock"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path v-if="floorPlanImage.locked" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+            </svg>
+          </button>
+          <button
+            class="p-1.5 rounded hover:bg-gray-100 text-red-500"
+            title="삭제"
+            @click="removeFloorPlanImage"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">투명도 ({{ Math.round(floorPlanImage.opacity * 100) }}%)</label>
+          <input
+            v-model.number="floorPlanImage.opacity"
+            type="range"
+            min="0.1"
+            max="1"
+            step="0.1"
+            class="w-full"
+          />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">크기 ({{ Math.round(floorPlanImage.scale * 100) }}%)</label>
+          <input
+            v-model.number="floorPlanImage.scale"
+            type="range"
+            min="0.1"
+            max="3"
+            step="0.1"
+            class="w-full"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- 방 생성 버튼 -->
@@ -323,6 +558,137 @@
         @delete="deleteFurniture"
         @close="closeEditForm"
       />
+    </div>
+
+    <!-- 레이어 패널 (vue-konva 충돌로 임시 비활성화) -->
+    <!--
+    <div v-if="showLayerPanel" class="absolute top-4 right-16">
+      <LayerPanel
+        :items="furnitureList"
+        :selected-id="selectedFurniture?.id ?? null"
+        @close="showLayerPanel = false"
+        @select="onLayerSelect"
+        @move-forward="onLayerMoveForward"
+        @move-backward="onLayerMoveBackward"
+        @bring-to-front="moveFurnitureToFront"
+        @send-to-back="moveFurnitureToBack"
+      />
+    </div>
+    -->
+
+    <!-- 선택된 가구 레이어 정렬 도구 (vue-konva 충돌로 임시 비활성화) -->
+    <!--
+    <div v-if="selectedFurniture && !showEditForm" class="absolute bottom-4 left-4">
+      <div class="bg-white rounded-lg shadow-lg p-2 flex items-center gap-1">
+        <span class="text-xs text-gray-500 px-2">레이어:</span>
+        <button
+          class="p-1.5 hover:bg-gray-100 rounded text-gray-600"
+          title="맨 뒤로 (Ctrl+[)"
+          @click="moveFurnitureToBack"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
+        </button>
+        <button
+          class="p-1.5 hover:bg-gray-100 rounded text-gray-600"
+          title="한 단계 뒤로 ([)"
+          @click="moveFurnitureBackward"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <button
+          class="p-1.5 hover:bg-gray-100 rounded text-gray-600"
+          title="한 단계 앞으로 (])"
+          @click="moveFurnitureForward"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+        <button
+          class="p-1.5 hover:bg-gray-100 rounded text-gray-600"
+          title="맨 앞으로 (Ctrl+])"
+          @click="moveFurnitureToFront"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+        </button>
+      </div>
+    </div>
+    -->
+
+    <!-- 방 편집 폼 (더블클릭 시 표시) -->
+    <div v-if="isRoomSelected && showRoomEditForm" class="absolute top-4 left-4">
+      <div class="bg-white rounded-lg shadow-lg p-4 w-72">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-gray-800">방 크기 수정</h3>
+          <button
+            class="text-gray-400 hover:text-gray-600"
+            @click="closeRoomEditForm"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">가로 (cm)</label>
+            <input
+              v-model.number="editRoomWidth"
+              type="number"
+              min="1"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">세로 (cm)</label>
+            <input
+              v-model.number="editRoomHeight"
+              type="number"
+              min="1"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 mb-1">
+              투명도: {{ Math.round(editRoomOpacity * 100) }}%
+            </label>
+            <input
+              v-model.number="editRoomOpacity"
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              class="w-full"
+            />
+          </div>
+
+          <div v-if="roomEditError" class="text-red-500 text-sm">
+            {{ roomEditError }}
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <button
+              class="flex-1 px-3 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm"
+              @click="closeRoomEditForm"
+            >
+              취소
+            </button>
+            <button
+              class="flex-1 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+              @click="updateRoomSize"
+            >
+              적용
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 방 생성 모달 -->
@@ -435,8 +801,12 @@ import { getDoorArcConfig as getDoorArcConfigUtil } from "~/utils/door";
 import { applyFurnitureEdit, applyDoorEdit, type FurnitureEditData, type DoorEditData } from "~/utils/objectEdit";
 import { saveFloorPlan, loadFloorPlan, exportToJson } from "~/utils/floorPlanStorage";
 import { useHistory } from "~/composables/useHistory";
+import { createMeasurement, getMeasurementMidpoint, formatDistance, type Measurement, type Point } from "~/utils/measureTool";
+import { loadFloorPlanImageFromFile, type FloorPlanImage } from "~/utils/floorPlanImage";
+import { getNextZIndex, sortByZIndex, bringToFront, sendToBack, bringForward, sendBackward } from "~/utils/layerOrder";
 import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
 import DoorEditForm from "~/components/editor/DoorEditForm.vue";
+import LayerPanel from "~/components/editor/LayerPanel.vue";
 import type { Furniture, FurnitureShape, LShapeDirection } from "~/types/furniture";
 
 interface Room {
@@ -444,6 +814,7 @@ interface Room {
   y: number;
   width: number;
   height: number;
+  opacity: number;
 }
 
 interface Door {
@@ -490,8 +861,8 @@ const getLShapeConfig = (furniture: Furniture) => {
   return {
     points,
     fill: furniture.color,
-    stroke: selectedFurniture.value?.id === furniture.id ? '#3b82f6' : '#374151',
-    strokeWidth: selectedFurniture.value?.id === furniture.id ? 3 : 1,
+    stroke: '#374151',
+    strokeWidth: 1,
     closed: true,
   };
 };
@@ -714,6 +1085,7 @@ const stageRef = ref<any>(null);
 const furnitureLayerRef = ref<any>(null);
 const transformerRef = ref<any>(null);
 const furnitureRefs = ref<Map<string, any>>(new Map());
+const roomRectRef = ref<any>(null);
 
 // 가구 그룹 ref 설정
 const setFurnitureRef = (id: string, el: any) => {
@@ -735,9 +1107,17 @@ const stageConfig = ref({
 
 // 방 상태
 const room = ref<Room | null>(null);
+const isRoomSelected = ref(false);
+const roomTransformerRef = ref<any>(null);
 const showRoomModal = ref(false);
+const showRoomEditForm = ref(false);
 const roomWidth = ref(400);
 const roomHeight = ref(300);
+// 방 편집 폼용 임시 값
+const editRoomWidth = ref(400);
+const editRoomHeight = ref(300);
+const editRoomOpacity = ref(1);
+const roomEditError = ref("");
 
 // 문 모달 상태
 const showDoorModal = ref(false);
@@ -749,12 +1129,46 @@ const doorWidth = ref(90);
 const furnitureList = ref<Furniture[]>([]);
 const selectedFurniture = ref<Furniture | null>(null);
 
+// zIndex 정렬된 가구 목록 (렌더링용)
+const sortedFurnitureList = computed(() => sortByZIndex(furnitureList.value));
+
 // 문 상태
 const doorList = ref<Door[]>([]);
 const selectedDoor = ref<Door | null>(null);
 
 // 편집 폼 표시 상태 (더블클릭 시 true)
 const showEditForm = ref(false);
+
+// 레이어 패널 표시 상태
+const showLayerPanel = ref(false);
+
+// 측정 도구 상태
+const isMeasureMode = ref(false);
+const measureStartPoint = ref<Point | null>(null);
+const measureCurrentPoint = ref<Point | null>(null);
+const measurements = ref<Measurement[]>([]);
+
+// 평면도 이미지 상태
+const floorPlanImage = ref<FloorPlanImage | null>(null);
+const floorPlanImageRef = ref<HTMLInputElement | null>(null);
+const floorPlanImageElement = ref<HTMLImageElement | null>(null);
+
+// 평면도 이미지가 변경되면 Image 요소 생성
+watch(floorPlanImage, (newImage) => {
+  if (newImage) {
+    const img = new Image();
+    img.onload = () => {
+      console.log('Image loaded:', img.width, img.height);
+      floorPlanImageElement.value = img;
+    };
+    img.onerror = (e) => {
+      console.error('Image load error:', e);
+    };
+    img.src = newImage.dataUrl;
+  } else {
+    floorPlanImageElement.value = null;
+  }
+}, { immediate: true });
 
 // 히스토리 (Undo/Redo)
 interface HistoryState {
@@ -1068,6 +1482,12 @@ const onWheel = (e: any) => {
 
 // 패닝
 const onMouseDown = (e: any) => {
+  // 측정 모드에서는 클릭 처리
+  if (isMeasureMode.value) {
+    handleMeasureClick(e);
+    return;
+  }
+
   if (e.target === e.target.getStage()) {
     isPanning.value = true;
     const pos = e.target.getStage().getPointerPosition();
@@ -1075,15 +1495,22 @@ const onMouseDown = (e: any) => {
     // 빈 공간 클릭 시 선택 및 편집 폼 해제
     selectedFurniture.value = null;
     selectedDoor.value = null;
+    isRoomSelected.value = false;
     showEditForm.value = false;
+    showRoomEditForm.value = false;
   }
 };
 
-// 방 클릭 시 패닝 시작
+// 방 클릭 시 패닝 방지 (이벤트 전파 중단)
 const onRoomMouseDown = (e: any) => {
-  isPanning.value = true;
-  const pos = e.target.getStage().getPointerPosition();
-  lastPointerPos.value = { x: pos.x, y: pos.y };
+  // 측정 모드에서는 클릭 처리
+  if (isMeasureMode.value) {
+    handleMeasureClick(e);
+    return;
+  }
+
+  // 방 클릭 시 패닝 시작하지 않음 (방 선택만 함)
+  e.cancelBubble = true;
 };
 
 // 방 클릭 시 선택 및 편집 폼 해제
@@ -1091,9 +1518,91 @@ const onRoomClick = () => {
   selectedFurniture.value = null;
   selectedDoor.value = null;
   showEditForm.value = false;
+  isRoomSelected.value = true;
+
+  // 다음 틱에서 Transformer 연결
+  nextTick(() => {
+    if (roomTransformerRef.value && roomRectRef.value) {
+      const transformer = roomTransformerRef.value.getNode();
+      const roomNode = roomRectRef.value.getNode();
+      transformer.nodes([roomNode]);
+      transformer.getLayer()?.batchDraw();
+    }
+  });
+};
+
+// 방 크기 조절 제한
+const roomBoundBoxFunc = (oldBox: any, newBox: any) => {
+  // 최소 크기 제한 (100cm = 200px)
+  const minSize = 100 * scale;
+  if (newBox.width < minSize || newBox.height < minSize) {
+    return oldBox;
+  }
+  return newBox;
+};
+
+// 방 크기 조절 완료
+const onRoomTransformEnd = (e: any) => {
+  if (!room.value) return;
+
+  const node = e.target;
+  const scaleX = node.scaleX();
+  const scaleY = node.scaleY();
+
+  // 스케일을 크기로 변환
+  room.value.x = node.x();
+  room.value.y = node.y();
+  room.value.width = Math.round(node.width() * scaleX);
+  room.value.height = Math.round(node.height() * scaleY);
+
+  // 스케일 초기화
+  node.scaleX(1);
+  node.scaleY(1);
+
+  saveToHistory();
+};
+
+// 방 편집 폼 열기
+const openRoomEditForm = () => {
+  if (!room.value) return;
+  editRoomWidth.value = Math.round(room.value.width / scale);
+  editRoomHeight.value = Math.round(room.value.height / scale);
+  editRoomOpacity.value = room.value.opacity;
+  roomEditError.value = "";
+  showRoomEditForm.value = true;
+  isRoomSelected.value = true;
+};
+
+// 방 편집 폼 닫기
+const closeRoomEditForm = () => {
+  showRoomEditForm.value = false;
+  roomEditError.value = "";
+};
+
+// 방 크기 업데이트
+const updateRoomSize = () => {
+  if (!room.value) return;
+
+  // 최소 크기만 검사 (0보다 커야 함)
+  if (editRoomWidth.value <= 0 || editRoomHeight.value <= 0) {
+    roomEditError.value = "크기는 0보다 커야 합니다.";
+    return;
+  }
+
+  room.value.width = editRoomWidth.value * scale;
+  room.value.height = editRoomHeight.value * scale;
+  room.value.opacity = editRoomOpacity.value;
+  roomEditError.value = "";
+  showRoomEditForm.value = false;
+  saveToHistory();
 };
 
 const onMouseMove = (e: any) => {
+  // 측정 모드에서는 마우스 이동 처리
+  if (isMeasureMode.value) {
+    handleMeasureMouseMove(e);
+  }
+
   if (!isPanning.value) return;
 
   const pos = e.target.getStage().getPointerPosition();
@@ -1117,6 +1626,7 @@ const createRoom = () => {
     y: 0,
     width: roomWidth.value * scale,
     height: roomHeight.value * scale,
+    opacity: 1,
   };
   // 방의 왼쪽 상단이 화면 왼쪽 상단(여백 포함)에 오도록 뷰 위치 조정
   stageConfig.value.x = margin;
@@ -1150,6 +1660,7 @@ const onDrop = (event: DragEvent) => {
     height: item.height,
     color: item.color,
     rotation: 0,
+    zIndex: getNextZIndex(furnitureList.value),
     shape: item.shape,
     lShapeDirection: item.lShapeDirection,
     lShapeRatio: item.lShapeRatio,
@@ -1469,6 +1980,7 @@ const onFurnitureDragEnd = (furniture: Furniture, e: any) => {
 const selectFurniture = (furniture: Furniture) => {
   selectedFurniture.value = furniture;
   selectedDoor.value = null;
+  isRoomSelected.value = false;
   showEditForm.value = false;
   updateTransformer();
 };
@@ -1552,9 +2064,12 @@ const onFurnitureTransformEnd = (furniture: Furniture, e: any) => {
 };
 
 // selectedFurniture 변경 시 Transformer 업데이트
+// flush: 'post'로 DOM 업데이트 후 실행하여 vue-konva 충돌 방지
 watch(selectedFurniture, () => {
-  updateTransformer();
-});
+  nextTick(() => {
+    updateTransformer();
+  });
+}, { flush: 'post' });
 
 // 문 그룹 설정 (위치 + 드래그)
 const getDoorGroupConfig = (door: Door) => {
@@ -1681,6 +2196,7 @@ const getDoorPanelConfig = (door: Door) => {
 const selectDoor = (door: Door) => {
   selectedDoor.value = door;
   selectedFurniture.value = null;
+  isRoomSelected.value = false;
   showEditForm.value = false;
 };
 
@@ -1732,6 +2248,181 @@ const deleteFurniture = () => {
   );
   selectedFurniture.value = null;
   saveToHistory();
+};
+
+// Konva 레이어의 children을 zIndex 순서대로 정렬
+const reorderFurnitureLayer = () => {
+  nextTick(() => {
+    const layer = furnitureLayerRef.value?.getNode();
+    if (!layer) return;
+
+    const children = layer.getChildren();
+    if (!children || children.length === 0) return;
+
+    // zIndex 기준으로 children 정렬 (낮은 값이 뒤로)
+    children.sort((a: any, b: any) => {
+      const aZIndex = a.attrs?.zIndex ?? 0;
+      const bZIndex = b.attrs?.zIndex ?? 0;
+      return aZIndex - bZIndex;
+    });
+
+    layer.batchDraw();
+  });
+};
+
+// 레이어 정렬 함수들
+const moveFurnitureToFront = () => {
+  if (!selectedFurniture.value) return;
+  furnitureList.value = bringToFront(furnitureList.value, selectedFurniture.value.id);
+  reorderFurnitureLayer();
+  saveToHistory();
+};
+
+const moveFurnitureToBack = () => {
+  if (!selectedFurniture.value) return;
+  furnitureList.value = sendToBack(furnitureList.value, selectedFurniture.value.id);
+  reorderFurnitureLayer();
+  saveToHistory();
+};
+
+const moveFurnitureForward = () => {
+  if (!selectedFurniture.value) return;
+  furnitureList.value = bringForward(furnitureList.value, selectedFurniture.value.id);
+  reorderFurnitureLayer();
+  saveToHistory();
+};
+
+const moveFurnitureBackward = () => {
+  if (!selectedFurniture.value) return;
+  furnitureList.value = sendBackward(furnitureList.value, selectedFurniture.value.id);
+  reorderFurnitureLayer();
+  saveToHistory();
+};
+
+// 레이어 패널 이벤트 핸들러
+const onLayerSelect = (item: Furniture) => {
+  selectedFurniture.value = item;
+  selectedDoor.value = null;
+  isRoomSelected.value = false;
+};
+
+const onLayerMoveForward = (item: Furniture) => {
+  furnitureList.value = bringForward(furnitureList.value, item.id);
+  reorderFurnitureLayer();
+  saveToHistory();
+};
+
+const onLayerMoveBackward = (item: Furniture) => {
+  furnitureList.value = sendBackward(furnitureList.value, item.id);
+  reorderFurnitureLayer();
+  saveToHistory();
+};
+
+// 측정 모드 토글
+const toggleMeasureMode = () => {
+  isMeasureMode.value = !isMeasureMode.value;
+  if (!isMeasureMode.value) {
+    measureStartPoint.value = null;
+    measureCurrentPoint.value = null;
+  }
+  // 측정 모드 시작시 선택 해제
+  if (isMeasureMode.value) {
+    selectedFurniture.value = null;
+    selectedDoor.value = null;
+    showEditForm.value = false;
+  }
+};
+
+// 측정 초기화
+const clearMeasurements = () => {
+  measurements.value = [];
+  measureStartPoint.value = null;
+  measureCurrentPoint.value = null;
+};
+
+// 측정 모드에서 클릭 처리
+const handleMeasureClick = (e: any) => {
+  if (!isMeasureMode.value) return;
+
+  const stage = e.target.getStage();
+  const pointer = stage.getPointerPosition();
+
+  // 스테이지 변환을 고려한 월드 좌표 계산
+  const worldX = (pointer.x - stageConfig.value.x) / stageConfig.value.scaleX;
+  const worldY = (pointer.y - stageConfig.value.y) / stageConfig.value.scaleY;
+  const point: Point = { x: worldX, y: worldY };
+
+  if (!measureStartPoint.value) {
+    // 시작점 설정
+    measureStartPoint.value = point;
+  } else {
+    // 끝점 - 측정 완료
+    const measurement = createMeasurement(measureStartPoint.value, point);
+    measurements.value.push(measurement);
+    measureStartPoint.value = null;
+    measureCurrentPoint.value = null;
+  }
+};
+
+// 측정 모드에서 마우스 이동 처리
+const handleMeasureMouseMove = (e: any) => {
+  if (!isMeasureMode.value || !measureStartPoint.value) return;
+
+  const stage = e.target.getStage();
+  const pointer = stage.getPointerPosition();
+
+  const worldX = (pointer.x - stageConfig.value.x) / stageConfig.value.scaleX;
+  const worldY = (pointer.y - stageConfig.value.y) / stageConfig.value.scaleY;
+  measureCurrentPoint.value = { x: worldX, y: worldY };
+};
+
+// 평면도 이미지 업로드 트리거
+const triggerFloorPlanUpload = () => {
+  floorPlanImageRef.value?.click();
+};
+
+// 평면도 이미지 파일 선택 처리
+const handleFloorPlanFileChange = async (e: Event) => {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    const image = await loadFloorPlanImageFromFile(file);
+    // 방 위치에 맞춰 이미지 배치
+    if (room.value) {
+      image.x = room.value.x;
+      image.y = room.value.y;
+    }
+    floorPlanImage.value = image;
+  } catch (error) {
+    console.error('평면도 이미지 로드 실패:', error);
+    alert(error instanceof Error ? error.message : '이미지를 로드할 수 없습니다.');
+  }
+
+  // input 초기화 (같은 파일 재선택 가능하도록)
+  input.value = '';
+};
+
+// 평면도 이미지 삭제
+const removeFloorPlanImage = () => {
+  floorPlanImage.value = null;
+};
+
+// 평면도 이미지 잠금 토글
+const toggleFloorPlanLock = () => {
+  if (floorPlanImage.value) {
+    floorPlanImage.value.locked = !floorPlanImage.value.locked;
+  }
+};
+
+// 평면도 이미지 드래그 종료
+const onFloorPlanImageDragEnd = (e: any) => {
+  if (!floorPlanImage.value || floorPlanImage.value.locked) return;
+
+  const node = e.target;
+  floorPlanImage.value.x = node.x();
+  floorPlanImage.value.y = node.y();
 };
 
 // 문 업데이트
@@ -1794,14 +2485,31 @@ const onKeyDown = (e: KeyboardEvent) => {
     saveToHistory();
   }
 
-  // Escape로 편집 폼 닫기 또는 선택 해제
+  // Escape로 측정 모드 종료, 편집 폼 닫기 또는 선택 해제
   if (e.key === "Escape") {
-    if (showEditForm.value) {
+    if (isMeasureMode.value) {
+      isMeasureMode.value = false;
+      measureStartPoint.value = null;
+      measureCurrentPoint.value = null;
+    } else if (showEditForm.value) {
       showEditForm.value = false;
+    } else if (showRoomEditForm.value) {
+      closeRoomEditForm();
     } else {
       selectedFurniture.value = null;
       selectedDoor.value = null;
+      isRoomSelected.value = false;
     }
+  }
+
+  // M키로 측정 모드 토글
+  if (e.key === "m" && !showEditForm.value) {
+    toggleMeasureMode();
+  }
+
+  // L키로 레이어 패널 토글
+  if (e.key === "l" && !showEditForm.value) {
+    showLayerPanel.value = !showLayerPanel.value;
   }
 
   // 문 삭제
@@ -1827,6 +2535,30 @@ const onKeyDown = (e: KeyboardEvent) => {
       showEditForm.value = true;
     } else if (selectedDoor.value && !showEditForm.value) {
       showEditForm.value = true;
+    } else if (isRoomSelected.value && !showRoomEditForm.value) {
+      openRoomEditForm();
+    }
+  }
+
+  // 레이어 정렬 단축키 (가구 선택 시)
+  if (selectedFurniture.value && !showEditForm.value) {
+    // Ctrl+] 맨 앞으로, ] 한 단계 앞으로
+    if (e.key === "]") {
+      e.preventDefault();
+      if (e.ctrlKey) {
+        moveFurnitureToFront();
+      } else {
+        moveFurnitureForward();
+      }
+    }
+    // Ctrl+[ 맨 뒤로, [ 한 단계 뒤로
+    if (e.key === "[") {
+      e.preventDefault();
+      if (e.ctrlKey) {
+        moveFurnitureToBack();
+      } else {
+        moveFurnitureBackward();
+      }
     }
   }
 
@@ -1953,7 +2685,10 @@ const loadFromLocalStorage = () => {
     doorList.value = data.doorList || [];
     selectedFurniture.value = null;
     selectedDoor.value = null;
-    nextTick(() => resetViewToRoom());
+    nextTick(() => {
+      resetViewToRoom();
+      reorderFurnitureLayer();
+    });
     return true;
   }
   return false;

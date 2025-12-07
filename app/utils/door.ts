@@ -3,6 +3,7 @@ export interface Room {
   y: number
   width: number
   height: number
+  opacity: number
 }
 
 export type WallType = 'top' | 'bottom' | 'left' | 'right'

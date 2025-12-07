@@ -84,8 +84,8 @@ test.describe('사용자 정의 가구 기능', () => {
     await page.getByText('내 가구 추가').click()
     await expect(page.getByRole('heading', { name: '내 가구 추가' })).toBeVisible()
 
-    // 취소 클릭
-    await page.getByRole('button', { name: '취소' }).click()
+    // 취소 클릭 (정확히 일치)
+    await page.getByRole('button', { name: '취소', exact: true }).click()
 
     // 모달이 닫힘
     await expect(page.getByRole('heading', { name: '내 가구 추가' })).not.toBeVisible()

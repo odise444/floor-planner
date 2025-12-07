@@ -14,6 +14,7 @@ export interface Furniture {
   height: number
   color: string
   rotation: number
+  zIndex: number  // 레이어 순서 (높을수록 앞)
   shape?: FurnitureShape  // 기본값: 'rect'
   // L자형 가구 전용 속성
   lShapeDirection?: LShapeDirection  // L자 방향
