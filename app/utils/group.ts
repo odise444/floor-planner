@@ -7,7 +7,7 @@ import type { Furniture } from '~/types/furniture'
 import type { Wall } from '~/utils/wall'
 
 // 그룹 멤버 타입
-export type GroupMemberType = 'furniture' | 'wall' | 'group'
+export type GroupMemberType = 'furniture' | 'wall' | 'group' | 'room'
 
 // 그룹 멤버 인터페이스
 export interface GroupMember {

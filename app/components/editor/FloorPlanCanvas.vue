@@ -1504,6 +1504,19 @@ const onCreateGroup = (members: GroupMember[]) => {
       if (wall) {
         boundsList.push(getWallBounds(wall, scale.value));
       }
+    } else if (member.type === 'room') {
+      if (room.value && room.value.id === member.id) {
+        boundsList.push({
+          minX: room.value.x,
+          minY: room.value.y,
+          maxX: room.value.x + room.value.width,
+          maxY: room.value.y + room.value.height,
+          width: room.value.width,
+          height: room.value.height,
+          centerX: room.value.x + room.value.width / 2,
+          centerY: room.value.y + room.value.height / 2,
+        });
+      }
     }
   }
 
@@ -1582,6 +1595,11 @@ const onGroupDragEnd = (e: any, group: ObjectGroup) => {
         wall.startY += dy / scale.value;
         wall.endX += dx / scale.value;
         wall.endY += dy / scale.value;
+      }
+    } else if (member.type === 'room') {
+      if (room.value && room.value.id === member.id) {
+        room.value.x += dx;
+        room.value.y += dy;
       }
     }
   }
@@ -1991,6 +2009,7 @@ const onMouseDown = (e: any) => {
     selectedFurniture.value = null;
     selectedDoor.value = null;
     selectedWall.value = null;
+    selectedGroup.value = null;
     isRoomSelected.value = false;
     showEditForm.value = false;
     showRoomEditForm.value = false;
@@ -2022,6 +2041,7 @@ const onRoomClick = () => {
 
   selectedFurniture.value = null;
   selectedDoor.value = null;
+  selectedGroup.value = null;
   showEditForm.value = false;
   isRoomSelected.value = true;
   updateTransformer();
@@ -2695,6 +2715,7 @@ const selectFurniture = (furniture: Furniture, e?: any) => {
     selectedFurniture.value = furniture;
     selectedDoor.value = null;
     selectedWall.value = null;
+    selectedGroup.value = null;
     isRoomSelected.value = false;
     showEditForm.value = false;
   }
@@ -2936,6 +2957,7 @@ const selectDoor = (door: Door, e?: any) => {
     selectedDoor.value = door;
     selectedFurniture.value = null;
     selectedWall.value = null;
+    selectedGroup.value = null;
     isRoomSelected.value = false;
     showEditForm.value = false;
   }
@@ -3072,6 +3094,7 @@ const onLayerSelectImage = (image: FloorPlanImage) => {
   selectedDoor.value = null;
   isRoomSelected.value = false;
   selectedWall.value = null;
+  selectedGroup.value = null;
 };
 
 const onLayerSelectRoom = (_room: Room) => {
@@ -3080,6 +3103,7 @@ const onLayerSelectRoom = (_room: Room) => {
   selectedDoor.value = null;
   selectedFloorPlanImageId.value = null;
   selectedWall.value = null;
+  selectedGroup.value = null;
 };
 
 const onLayerSelectWall = (wall: Wall) => {
@@ -3088,6 +3112,7 @@ const onLayerSelectWall = (wall: Wall) => {
   selectedDoor.value = null;
   isRoomSelected.value = false;
   selectedFloorPlanImageId.value = null;
+  selectedGroup.value = null;
 };
 
 const onLayerMoveForward = (item: Furniture) => {
@@ -3255,6 +3280,7 @@ const onWallClick = (wall: Wall, e?: any) => {
     clearMultiSelect();
     selectedFurniture.value = null;
     selectedDoor.value = null;
+    selectedGroup.value = null;
     isRoomSelected.value = false;
     selectedWall.value = wall;
     showEditForm.value = false;

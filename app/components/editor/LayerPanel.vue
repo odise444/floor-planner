@@ -48,6 +48,7 @@
           dragOverIndex === index ? 'border-t-2 border-blue-500' : '',
           draggingId === item.id ? 'opacity-50' : ''
         ]"
+        :style="{ paddingLeft: `${(item.depth || 0) * 16 + 8}px` }"
         @click="onItemClick(item, $event)"
         @dragstart="onDragStart($event, item, index)"
         @dragend="onDragEnd"
@@ -55,6 +56,29 @@
         @dragleave="onDragLeave"
         @drop.prevent="onDrop($event, index)"
       >
+        <!-- 그룹 펼침/접기 버튼 -->
+        <button
+          v-if="item.type === 'group'"
+          class="w-4 h-4 flex-shrink-0 text-gray-500 hover:text-gray-700"
+          @click.stop="toggleGroupExpand(item.id)"
+        >
+          <svg
+            class="w-4 h-4 transition-transform"
+            :class="expandedGroups.has(item.id) ? 'rotate-90' : ''"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+        <!-- 하위 노드인 경우 들여쓰기 표시 -->
+        <div v-else-if="item.parentGroupId" class="w-4 h-4 flex-shrink-0 flex items-center justify-center text-gray-400">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+
         <!-- 체크박스 (선택 모드일 때만) -->
         <input
           v-if="isSelectionMode"
@@ -65,7 +89,7 @@
         />
 
         <!-- 드래그 핸들 -->
-        <div v-if="!isSelectionMode" class="cursor-grab text-gray-400 hover:text-gray-600">
+        <div v-if="!isSelectionMode && !item.parentGroupId" class="cursor-grab text-gray-400 hover:text-gray-600">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
           </svg>
@@ -250,6 +274,9 @@ interface UnifiedLayerItem {
   locked?: boolean
   memberCount?: number
   original: Furniture | FloorPlanImage | Room | Wall | ObjectGroup
+  // 그룹 관련 속성
+  parentGroupId?: string  // 부모 그룹 ID
+  depth?: number          // 들여쓰기 깊이
 }
 
 const props = defineProps<{
@@ -329,10 +356,10 @@ const handleCreateGroup = () => {
   if (checkedItems.value.length < 2) return
 
   const members: GroupMember[] = checkedItems.value
-    .filter((c) => c.type === 'furniture' || c.type === 'wall' || c.type === 'group')
+    .filter((c) => c.type === 'furniture' || c.type === 'wall' || c.type === 'group' || c.type === 'room')
     .map((c) => ({
       id: c.id,
-      type: c.type as 'furniture' | 'wall' | 'group',
+      type: c.type as 'furniture' | 'wall' | 'group' | 'room',
     }))
 
   if (members.length >= 2) {
@@ -351,13 +378,39 @@ const handleUngroup = () => {
   }
 }
 
+// 그룹 펼침 상태
+const expandedGroups = ref<Set<string>>(new Set())
+
+// 그룹 펼침/접기 토글
+const toggleGroupExpand = (groupId: string) => {
+  if (expandedGroups.value.has(groupId)) {
+    expandedGroups.value.delete(groupId)
+  } else {
+    expandedGroups.value.add(groupId)
+  }
+}
+
+// 그룹에 속한 멤버 ID 집합 (중복 표시 방지)
+const groupMemberIds = computed(() => {
+  const ids = new Set<string>()
+  if (props.groups) {
+    for (const group of props.groups) {
+      for (const member of group.members) {
+        ids.add(member.id)
+      }
+    }
+  }
+  return ids
+})
+
 // 통합 레이어 목록 (방 + 이미지 + 가구 + 그룹을 zIndex로 정렬)
 const unifiedItems = computed((): UnifiedLayerItem[] => {
   const items: UnifiedLayerItem[] = []
 
-  // 그룹 추가
+  // 그룹 및 그룹 멤버 추가
   if (props.groups) {
     for (const group of props.groups) {
+      // 그룹 자체 추가
       items.push({
         id: group.id,
         type: 'group',
@@ -368,22 +421,81 @@ const unifiedItems = computed((): UnifiedLayerItem[] => {
         height: group.height,
         memberCount: group.members.length,
         original: group,
+        depth: 0,
       })
+
+      // 그룹이 펼쳐져 있으면 멤버들 추가
+      if (expandedGroups.value.has(group.id)) {
+        for (const member of group.members) {
+          if (member.type === 'furniture') {
+            const furniture = props.items.find((f) => f.id === member.id)
+            if (furniture) {
+              items.push({
+                id: furniture.id,
+                type: 'furniture',
+                name: furniture.name,
+                zIndex: furniture.zIndex,
+                color: furniture.color,
+                width: furniture.width,
+                height: furniture.height,
+                original: furniture,
+                parentGroupId: group.id,
+                depth: 1,
+              })
+            }
+          } else if (member.type === 'wall') {
+            const wall = props.walls?.find((w) => w.id === member.id)
+            if (wall) {
+              const length = Math.round(getWallLength(wall))
+              items.push({
+                id: wall.id,
+                type: 'wall',
+                name: wall.isExterior ? '외벽' : '내벽',
+                zIndex: wall.zIndex,
+                color: wall.color,
+                width: length,
+                height: wall.thickness,
+                original: wall,
+                parentGroupId: group.id,
+                depth: 1,
+              })
+            }
+          } else if (member.type === 'room') {
+            if (props.room && props.room.id === member.id) {
+              items.push({
+                id: props.room.id,
+                type: 'room',
+                name: '방',
+                zIndex: props.room.zIndex,
+                width: props.room.width,
+                height: props.room.height,
+                opacity: props.room.opacity,
+                original: props.room,
+                parentGroupId: group.id,
+                depth: 1,
+              })
+            }
+          }
+        }
+      }
     }
   }
 
-  // 가구 추가
+  // 가구 추가 (그룹에 속하지 않은 것만)
   for (const furniture of props.items) {
-    items.push({
-      id: furniture.id,
-      type: 'furniture',
-      name: furniture.name,
-      zIndex: furniture.zIndex,
-      color: furniture.color,
-      width: furniture.width,
-      height: furniture.height,
-      original: furniture,
-    })
+    if (!groupMemberIds.value.has(furniture.id)) {
+      items.push({
+        id: furniture.id,
+        type: 'furniture',
+        name: furniture.name,
+        zIndex: furniture.zIndex,
+        color: furniture.color,
+        width: furniture.width,
+        height: furniture.height,
+        original: furniture,
+        depth: 0,
+      })
+    }
   }
 
   // 이미지 추가
@@ -399,11 +511,12 @@ const unifiedItems = computed((): UnifiedLayerItem[] => {
       opacity: props.image.opacity,
       locked: props.image.locked,
       original: props.image,
+      depth: 0,
     })
   }
 
-  // 방 추가
-  if (props.room) {
+  // 방 추가 (그룹에 속하지 않은 경우만)
+  if (props.room && !groupMemberIds.value.has(props.room.id)) {
     items.push({
       id: props.room.id,
       type: 'room',
@@ -413,28 +526,46 @@ const unifiedItems = computed((): UnifiedLayerItem[] => {
       height: props.room.height,
       opacity: props.room.opacity,
       original: props.room,
+      depth: 0,
     })
   }
 
-  // 벽체 추가
+  // 벽체 추가 (그룹에 속하지 않은 것만)
   if (props.walls) {
     for (const wall of props.walls) {
-      const length = Math.round(getWallLength(wall))
-      items.push({
-        id: wall.id,
-        type: 'wall',
-        name: wall.isExterior ? '외벽' : '내벽',
-        zIndex: wall.zIndex,
-        color: wall.color,
-        width: length,
-        height: wall.thickness,
-        original: wall,
-      })
+      if (!groupMemberIds.value.has(wall.id)) {
+        const length = Math.round(getWallLength(wall))
+        items.push({
+          id: wall.id,
+          type: 'wall',
+          name: wall.isExterior ? '외벽' : '내벽',
+          zIndex: wall.zIndex,
+          color: wall.color,
+          width: length,
+          height: wall.thickness,
+          original: wall,
+          depth: 0,
+        })
+      }
     }
   }
 
-  // zIndex 내림차순 정렬 (높은 zIndex가 위에 표시)
-  return items.sort((a, b) => b.zIndex - a.zIndex)
+  // zIndex 내림차순 정렬 (높은 zIndex가 위에 표시) - 단, 그룹 멤버는 그룹 바로 아래에 유지
+  // 그룹 멤버가 아닌 아이템만 정렬하고, 그룹 멤버는 원래 위치 유지
+  const topLevelItems = items.filter((item) => !item.parentGroupId)
+  topLevelItems.sort((a, b) => b.zIndex - a.zIndex)
+
+  // 결과 배열 재구성: 그룹이면 해당 그룹의 멤버들을 바로 뒤에 배치
+  const result: UnifiedLayerItem[] = []
+  for (const item of topLevelItems) {
+    result.push(item)
+    if (item.type === 'group' && expandedGroups.value.has(item.id)) {
+      const memberItems = items.filter((m) => m.parentGroupId === item.id)
+      result.push(...memberItems)
+    }
+  }
+
+  return result
 })
 
 // 전체 아이템 수
