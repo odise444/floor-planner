@@ -81,8 +81,8 @@
           <!-- 문 프레임 (벽 끊김 표시) -->
           <v-rect
             :config="{
-              width: door.wall === 'top' || door.wall === 'bottom' ? door.width * scale : 10,
-              height: door.wall === 'left' || door.wall === 'right' ? door.width * scale : 10,
+              width: door.wall === 'top' || door.wall === 'bottom' ? door.width * scale.value : 10,
+              height: door.wall === 'left' || door.wall === 'right' ? door.width * scale.value : 10,
               fill: '#ffffff',
               stroke: selectedDoor?.id === door.id ? '#3b82f6' : '#374151',
               strokeWidth: selectedDoor?.id === door.id ? 2 : 1,
@@ -102,8 +102,8 @@
               text: `${door.width}`,
               fontSize: 10,
               fill: '#374151',
-              x: door.wall === 'top' || door.wall === 'bottom' ? (door.width * scale) / 2 - 10 : -15,
-              y: door.wall === 'left' || door.wall === 'right' ? (door.width * scale) / 2 - 5 : -15,
+              x: door.wall === 'top' || door.wall === 'bottom' ? (door.width * scale.value) / 2 - 10 : -15,
+              y: door.wall === 'left' || door.wall === 'right' ? (door.width * scale.value) / 2 - 5 : -15,
             }"
           />
         </v-group>
@@ -149,10 +149,10 @@
           :key="furniture.id"
           :ref="(el: any) => setFurnitureRef(furniture.id, el)"
           :config="{
-            x: furniture.x + (furniture.width * scale) / 2,
-            y: furniture.y + (furniture.height * scale) / 2,
-            offsetX: (furniture.width * scale) / 2,
-            offsetY: (furniture.height * scale) / 2,
+            x: furniture.x + (furniture.width * scale.value) / 2,
+            y: furniture.y + (furniture.height * scale.value) / 2,
+            offsetX: (furniture.width * scale.value) / 2,
+            offsetY: (furniture.height * scale.value) / 2,
             rotation: furniture.rotation,
             draggable: true,
             name: `furniture-${furniture.id}`,
@@ -168,8 +168,8 @@
           <v-rect
             v-if="!furniture.shape || furniture.shape === 'rect'"
             :config="{
-              width: furniture.width * scale,
-              height: furniture.height * scale,
+              width: furniture.width * scale.value,
+              height: furniture.height * scale.value,
               fill: furniture.color,
               stroke: '#374151',
               strokeWidth: 1,
@@ -180,8 +180,8 @@
           <v-circle
             v-else-if="furniture.shape === 'circle'"
             :config="{
-              x: (furniture.width * scale) / 2,
-              y: (furniture.height * scale) / 2,
+              x: (furniture.width * scale.value) / 2,
+              y: (furniture.height * scale.value) / 2,
               radius: Math.min(furniture.width, furniture.height) * scale / 2,
               fill: furniture.color,
               stroke: '#374151',
@@ -192,10 +192,10 @@
           <v-ellipse
             v-else-if="furniture.shape === 'ellipse'"
             :config="{
-              x: (furniture.width * scale) / 2,
-              y: (furniture.height * scale) / 2,
-              radiusX: (furniture.width * scale) / 2,
-              radiusY: (furniture.height * scale) / 2,
+              x: (furniture.width * scale.value) / 2,
+              y: (furniture.height * scale.value) / 2,
+              radiusX: (furniture.width * scale.value) / 2,
+              radiusY: (furniture.height * scale.value) / 2,
               fill: furniture.color,
               stroke: '#374151',
               strokeWidth: 1,
@@ -216,7 +216,7 @@
               text: `${furniture.width}cm`,
               fontSize: 10,
               fill: '#374151',
-              x: (furniture.width * scale) / 2,
+              x: (furniture.width * scale.value) / 2,
               y: 4,
               offsetX: 15,
             }"
@@ -228,7 +228,7 @@
               fontSize: 10,
               fill: '#374151',
               x: 4,
-              y: (furniture.height * scale) / 2,
+              y: (furniture.height * scale.value) / 2,
               rotation: -90,
               offsetX: 15,
             }"
@@ -819,6 +819,8 @@ interface Room {
   y: number;
   width: number;
   height: number;
+  widthCm?: number;
+  heightCm?: number;
   opacity: number;
   zIndex: number;
 }
@@ -833,13 +835,21 @@ interface Door {
   hingeSide: "left" | "right"; // 경첩 위치
 }
 
-// 1cm = 2px 스케일
-const scale = 2;
+// 기본 스케일 (1cm = 2px)
+const DEFAULT_SCALE = 2;
+
+// 방의 실제 크기가 설정되면 동적 scale 계산, 아니면 기본값 사용
+const scale = computed(() => {
+  if (room.value?.widthCm && room.value.widthCm > 0) {
+    return room.value.width / room.value.widthCm;
+  }
+  return DEFAULT_SCALE;
+});
 
 // L자형 가구 config 생성
 const getLShapeConfig = (furniture: Furniture) => {
-  const w = furniture.width * scale;
-  const h = furniture.height * scale;
+  const w = furniture.width * scale.value;
+  const h = furniture.height * scale.value;
   const ratioW = furniture.lShapeRatioW ?? furniture.lShapeRatio ?? 0.5;
   const ratioH = furniture.lShapeRatioH ?? furniture.lShapeRatio ?? 0.5;
   const direction = furniture.lShapeDirection || 'bottom-right';
@@ -875,8 +885,8 @@ const getLShapeConfig = (furniture: Furniture) => {
 
 // 가구 이름 텍스트 config
 const getFurnitureTextConfig = (furniture: Furniture) => {
-  const w = furniture.width * scale;
-  const h = furniture.height * scale;
+  const w = furniture.width * scale.value;
+  const h = furniture.height * scale.value;
 
   // L자형이 아닌 경우 기본 중앙 정렬
   if (furniture.shape !== 'l-shape') {
@@ -948,8 +958,8 @@ const getFurnitureTextConfig = (furniture: Furniture) => {
 
 // L자형 가로 핸들 (cutW 조절)
 const getLShapeHandleHorizontal = (furniture: Furniture) => {
-  const w = furniture.width * scale;
-  const h = furniture.height * scale;
+  const w = furniture.width * scale.value;
+  const h = furniture.height * scale.value;
   const ratioW = furniture.lShapeRatioW ?? furniture.lShapeRatio ?? 0.5;
   const ratioH = furniture.lShapeRatioH ?? furniture.lShapeRatio ?? 0.5;
   const direction = furniture.lShapeDirection || 'bottom-right';
@@ -994,8 +1004,8 @@ const getLShapeHandleHorizontal = (furniture: Furniture) => {
 
 // L자형 세로 핸들 (cutH 조절)
 const getLShapeHandleVertical = (furniture: Furniture) => {
-  const w = furniture.width * scale;
-  const h = furniture.height * scale;
+  const w = furniture.width * scale.value;
+  const h = furniture.height * scale.value;
   const ratioW = furniture.lShapeRatioW ?? furniture.lShapeRatio ?? 0.5;
   const ratioH = furniture.lShapeRatioH ?? furniture.lShapeRatio ?? 0.5;
   const direction = furniture.lShapeDirection || 'bottom-right';
@@ -1041,7 +1051,7 @@ const getLShapeHandleVertical = (furniture: Furniture) => {
 // L자형 가로 핸들 드래그
 const onLShapeHandleDragH = (furniture: Furniture, e: any) => {
   const node = e.target;
-  const w = furniture.width * scale;
+  const w = furniture.width * scale.value;
   const direction = furniture.lShapeDirection || 'bottom-right';
 
   const handleX = node.x() + 5;
@@ -1065,7 +1075,7 @@ const onLShapeHandleDragH = (furniture: Furniture, e: any) => {
 // L자형 세로 핸들 드래그
 const onLShapeHandleDragV = (furniture: Furniture, e: any) => {
   const node = e.target;
-  const h = furniture.height * scale;
+  const h = furniture.height * scale.value;
   const direction = furniture.lShapeDirection || 'bottom-right';
 
   const handleY = node.y() + 5;
@@ -1308,7 +1318,7 @@ const distanceLines = computed((): DistanceLine[] => {
     lines.push({
       id: 'wall-left',
       points: [r.x, midY, bounds.left, midY],
-      distance: Math.round(distLeft / scale),
+      distance: Math.round(distLeft / scale.value),
       textX: r.x + distLeft / 2,
       textY: midY - 8,
       offsetX: 12,
@@ -1323,7 +1333,7 @@ const distanceLines = computed((): DistanceLine[] => {
     lines.push({
       id: 'wall-right',
       points: [bounds.right, midY, r.x + r.width, midY],
-      distance: Math.round(distRight / scale),
+      distance: Math.round(distRight / scale.value),
       textX: bounds.right + distRight / 2,
       textY: midY - 8,
       offsetX: 12,
@@ -1338,7 +1348,7 @@ const distanceLines = computed((): DistanceLine[] => {
     lines.push({
       id: 'wall-top',
       points: [midX, r.y, midX, bounds.top],
-      distance: Math.round(distTop / scale),
+      distance: Math.round(distTop / scale.value),
       textX: midX + 4,
       textY: r.y + distTop / 2,
       offsetY: 5,
@@ -1353,7 +1363,7 @@ const distanceLines = computed((): DistanceLine[] => {
     lines.push({
       id: 'wall-bottom',
       points: [midX, bounds.bottom, midX, r.y + r.height],
-      distance: Math.round(distBottom / scale),
+      distance: Math.round(distBottom / scale.value),
       textX: midX + 4,
       textY: bounds.bottom + distBottom / 2,
       offsetY: 5,
@@ -1378,7 +1388,7 @@ const distanceLines = computed((): DistanceLine[] => {
         lines.push({
           id: `furniture-right-${other.id}`,
           points: [bounds.right, midY, otherBounds.left, midY],
-          distance: Math.round(dist / scale),
+          distance: Math.round(dist / scale.value),
           textX: bounds.right + dist / 2,
           textY: midY - 8,
           offsetX: 12,
@@ -1393,7 +1403,7 @@ const distanceLines = computed((): DistanceLine[] => {
         lines.push({
           id: `furniture-left-${other.id}`,
           points: [otherBounds.right, midY, bounds.left, midY],
-          distance: Math.round(dist / scale),
+          distance: Math.round(dist / scale.value),
           textX: otherBounds.right + dist / 2,
           textY: midY - 8,
           offsetX: 12,
@@ -1413,7 +1423,7 @@ const distanceLines = computed((): DistanceLine[] => {
         lines.push({
           id: `furniture-bottom-${other.id}`,
           points: [midX, bounds.bottom, midX, otherBounds.top],
-          distance: Math.round(dist / scale),
+          distance: Math.round(dist / scale.value),
           textX: midX + 4,
           textY: bounds.bottom + dist / 2,
           offsetY: 5,
@@ -1428,7 +1438,7 @@ const distanceLines = computed((): DistanceLine[] => {
         lines.push({
           id: `furniture-top-${other.id}`,
           points: [midX, otherBounds.bottom, midX, bounds.top],
-          distance: Math.round(dist / scale),
+          distance: Math.round(dist / scale.value),
           textX: midX + 4,
           textY: otherBounds.bottom + dist / 2,
           offsetY: 5,
@@ -1543,7 +1553,7 @@ const onRoomClick = () => {
 // 방 크기 조절 제한
 const roomBoundBoxFunc = (oldBox: any, newBox: any) => {
   // 최소 크기 제한 (100cm = 200px)
-  const minSize = 100 * scale;
+  const minSize = 100 * scale.value;
   if (newBox.width < minSize || newBox.height < minSize) {
     return oldBox;
   }
@@ -1574,8 +1584,8 @@ const onRoomTransformEnd = (e: any) => {
 // 방 편집 폼 열기
 const openRoomEditForm = () => {
   if (!room.value) return;
-  editRoomWidth.value = Math.round(room.value.width / scale);
-  editRoomHeight.value = Math.round(room.value.height / scale);
+  editRoomWidth.value = Math.round(room.value.width / scale.value);
+  editRoomHeight.value = Math.round(room.value.height / scale.value);
   editRoomOpacity.value = room.value.opacity;
   roomEditError.value = "";
   showRoomEditForm.value = true;
@@ -1598,8 +1608,8 @@ const updateRoomSize = () => {
     return;
   }
 
-  room.value.width = editRoomWidth.value * scale;
-  room.value.height = editRoomHeight.value * scale;
+  room.value.width = editRoomWidth.value * scale.value;
+  room.value.height = editRoomHeight.value * scale.value;
   room.value.opacity = editRoomOpacity.value;
   roomEditError.value = "";
   showRoomEditForm.value = false;
@@ -1634,10 +1644,10 @@ const createRoom = () => {
     id: `room-${Date.now()}`,
     x: 0,
     y: 0,
-    width: roomWidth.value * scale,
-    height: roomHeight.value * scale,
+    width: roomWidth.value * scale.value,
+    height: roomHeight.value * scale.value,
     opacity: 1,
-    zIndex: -2, // 이미지(-1)보다 아래, 가장 아래 레이어
+    zIndex: 0, // 이미지(-1) 위, 가구와 같은 레벨
   };
   // 방의 왼쪽 상단이 화면 왼쪽 상단(여백 포함)에 오도록 뷰 위치 조정
   stageConfig.value.x = margin;
@@ -1735,36 +1745,36 @@ const canMoveFurniture = (
 const getDoorBounds = (door: Door): { left: number; top: number; right: number; bottom: number } => {
   if (!room.value) return { left: 0, top: 0, right: 0, bottom: 0 };
   const r = room.value;
-  const dw = door.width * scale;
+  const dw = door.width * scale.value;
 
   switch (door.wall) {
     case "top":
       return {
-        left: r.x + door.x * scale,
+        left: r.x + door.x * scale.value,
         top: r.y - 5,
-        right: r.x + door.x * scale + dw,
+        right: r.x + door.x * scale.value + dw,
         bottom: r.y + 5,
       };
     case "bottom":
       return {
-        left: r.x + door.x * scale,
+        left: r.x + door.x * scale.value,
         top: r.y + r.height - 5,
-        right: r.x + door.x * scale + dw,
+        right: r.x + door.x * scale.value + dw,
         bottom: r.y + r.height + 5,
       };
     case "left":
       return {
         left: r.x - 5,
-        top: r.y + door.y * scale,
+        top: r.y + door.y * scale.value,
         right: r.x + 5,
-        bottom: r.y + door.y * scale + dw,
+        bottom: r.y + door.y * scale.value + dw,
       };
     case "right":
       return {
         left: r.x + r.width - 5,
-        top: r.y + door.y * scale,
+        top: r.y + door.y * scale.value,
         right: r.x + r.width + 5,
-        bottom: r.y + door.y * scale + dw,
+        bottom: r.y + door.y * scale.value + dw,
       };
   }
 };
@@ -1812,8 +1822,8 @@ const getFurnitureBounds = (
   y: number,
   furniture: Furniture
 ): { left: number; top: number; right: number; bottom: number; width: number; height: number } => {
-  const w = furniture.width * scale;
-  const h = furniture.height * scale;
+  const w = furniture.width * scale.value;
+  const h = furniture.height * scale.value;
   const rotation = furniture.rotation;
 
   // 90도/270도 회전 시 가로/세로가 바뀜
@@ -1942,8 +1952,8 @@ const snapToAll = (
 
 // 가구의 원래 크기 기준 왼쪽 상단 좌표로 변환 (중심점에서)
 const centerToLeftTop = (centerX: number, centerY: number, furniture: Furniture) => {
-  const w = furniture.width * scale;
-  const h = furniture.height * scale;
+  const w = furniture.width * scale.value;
+  const h = furniture.height * scale.value;
   return {
     x: centerX - w / 2,
     y: centerY - h / 2,
@@ -1952,8 +1962,8 @@ const centerToLeftTop = (centerX: number, centerY: number, furniture: Furniture)
 
 // 가구의 원래 크기 기준 왼쪽 상단에서 중심점으로 변환
 const leftTopToCenter = (x: number, y: number, furniture: Furniture) => {
-  const w = furniture.width * scale;
-  const h = furniture.height * scale;
+  const w = furniture.width * scale.value;
+  const h = furniture.height * scale.value;
   return {
     x: x + w / 2,
     y: y + h / 2,
@@ -2060,8 +2070,8 @@ const onFurnitureTransformEnd = (furniture: Furniture, e: any) => {
   const scaleY = node.scaleY();
 
   // 새 크기 계산 (픽셀 -> cm)
-  const newWidth = Math.round((furniture.width * scaleX));
-  const newHeight = Math.round((furniture.height * scaleY));
+  const newWidth = Math.round((furniture.width * scale.valueX));
+  const newHeight = Math.round((furniture.height * scale.valueY));
 
   // 스케일 리셋 (크기 변환을 width/height로 적용)
   node.scaleX(1);
@@ -2077,8 +2087,8 @@ const onFurnitureTransformEnd = (furniture: Furniture, e: any) => {
   furniture.y = leftTop.y;
 
   // offset 업데이트
-  node.offsetX((furniture.width * scale) / 2);
-  node.offsetY((furniture.height * scale) / 2);
+  node.offsetX((furniture.width * scale.value) / 2);
+  node.offsetY((furniture.height * scale.value) / 2);
 
   // Transformer 다시 연결
   updateTransformer();
@@ -2102,20 +2112,20 @@ const getDoorGroupConfig = (door: Door) => {
 
   switch (door.wall) {
     case "top":
-      x = r.x + door.x * scale;
+      x = r.x + door.x * scale.value;
       y = r.y - 5;
       break;
     case "bottom":
-      x = r.x + door.x * scale;
+      x = r.x + door.x * scale.value;
       y = r.y + r.height - 5;
       break;
     case "left":
       x = r.x - 5;
-      y = r.y + door.y * scale;
+      y = r.y + door.y * scale.value;
       break;
     case "right":
       x = r.x + r.width - 5;
-      y = r.y + door.y * scale;
+      y = r.y + door.y * scale.value;
       break;
   }
 
@@ -2140,16 +2150,16 @@ const snapDoorToWall = (
   const minDist = Math.min(distTop, distBottom, distLeft, distRight);
 
   if (minDist === distTop) {
-    const posX = Math.max(0, Math.min((r.width - dw) / scale, (worldX - r.x) / scale));
+    const posX = Math.max(0, Math.min((r.width - dw) / scale.value, (worldX - r.x) / scale.value));
     return { wall: "top", x: posX, y: 0 };
   } else if (minDist === distBottom) {
-    const posX = Math.max(0, Math.min((r.width - dw) / scale, (worldX - r.x) / scale));
+    const posX = Math.max(0, Math.min((r.width - dw) / scale.value, (worldX - r.x) / scale.value));
     return { wall: "bottom", x: posX, y: 0 };
   } else if (minDist === distLeft) {
-    const posY = Math.max(0, Math.min((r.height - dw) / scale, (worldY - r.y) / scale));
+    const posY = Math.max(0, Math.min((r.height - dw) / scale.value, (worldY - r.y) / scale.value));
     return { wall: "left", x: 0, y: posY };
   } else {
-    const posY = Math.max(0, Math.min((r.height - dw) / scale, (worldY - r.y) / scale));
+    const posY = Math.max(0, Math.min((r.height - dw) / scale.value, (worldY - r.y) / scale.value));
     return { wall: "right", x: 0, y: posY };
   }
 };
@@ -2158,7 +2168,7 @@ const snapDoorToWall = (
 const onDoorDragEnd = (door: Door, e: any) => {
   if (!room.value) return;
   const node = e.target;
-  const dw = door.width * scale;
+  const dw = door.width * scale.value;
 
   // 드래그된 위치 (월드 좌표)
   const worldX = node.x();
@@ -2174,7 +2184,7 @@ const onDoorDragEnd = (door: Door, e: any) => {
 
 // 문 열림 호(arc) 설정 - 테스트된 유틸 함수 사용
 const getDoorArcConfig = (door: Door) => {
-  const dw = door.width * scale;
+  const dw = door.width * scale.value;
   const config = getDoorArcConfigUtil(door.wall, door.openDirection, door.hingeSide, dw);
 
   return {
@@ -2194,7 +2204,7 @@ const getDoorArcConfig = (door: Door) => {
 
 // 문 패널(열린 문) 설정 - arc와 동일한 중심점에서 45도 방향
 const getDoorPanelConfig = (door: Door) => {
-  const dw = door.width * scale;
+  const dw = door.width * scale.value;
   const arcConfig = getDoorArcConfig(door);
 
   // arc의 중심점(경첩 위치)
@@ -2693,16 +2703,16 @@ const onKeyDown = (e: KeyboardEvent) => {
 
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      newX = f.x - MOVE_STEP * scale;
+      newX = f.x - MOVE_STEP * scale.value;
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      newX = f.x + MOVE_STEP * scale;
+      newX = f.x + MOVE_STEP * scale.value;
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      newY = f.y - MOVE_STEP * scale;
+      newY = f.y - MOVE_STEP * scale.value;
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      newY = f.y + MOVE_STEP * scale;
+      newY = f.y + MOVE_STEP * scale.value;
     }
 
     // 충돌이 없을 때만 이동
@@ -2727,7 +2737,7 @@ const onKeyDown = (e: KeyboardEvent) => {
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         if (room.value) {
-          const maxX = (room.value.width / scale) - d.width;
+          const maxX = (room.value.width / scale.value) - d.width;
           const newX = Math.min(maxX, d.x + MOVE_STEP);
           if (canMoveDoor(d, newX, d.y)) {
             d.x = newX;
@@ -2744,7 +2754,7 @@ const onKeyDown = (e: KeyboardEvent) => {
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         if (room.value) {
-          const maxY = (room.value.height / scale) - d.width;
+          const maxY = (room.value.height / scale.value) - d.width;
           const newY = Math.min(maxY, d.y + MOVE_STEP);
           if (canMoveDoor(d, d.x, newY)) {
             d.y = newY;
@@ -2807,7 +2817,7 @@ const loadFromLocalStorage = () => {
       room.value = {
         ...data.room,
         id: data.room.id || `room-${Date.now()}`,
-        zIndex: data.room.zIndex ?? -2,
+        zIndex: data.room.zIndex ?? 0,
       };
     } else {
       room.value = null;

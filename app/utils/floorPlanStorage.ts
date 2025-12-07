@@ -8,6 +8,8 @@ export interface Room {
   y: number
   width: number
   height: number
+  widthCm?: number
+  heightCm?: number
   opacity: number
   zIndex: number
 }

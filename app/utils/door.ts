@@ -3,7 +3,9 @@ export interface Room {
   x: number
   y: number
   width: number
-  height: number
+  height: number  // 픽셀 크기
+  widthCm?: number  // 실제 크기 (cm) - 설정 시 scale 계산에 사용
+  heightCm?: number // 실제 크기 (cm)
   opacity: number
   zIndex: number
 }
