@@ -565,13 +565,17 @@
       <LayerPanel
         :items="furnitureList"
         :selected-id="selectedFurniture?.id ?? null"
+        :image="floorPlanImage"
+        :selected-image-id="selectedFloorPlanImageId"
         @close="showLayerPanel = false"
         @select="onLayerSelect"
+        @select-image="onLayerSelectImage"
         @move-forward="onLayerMoveForward"
         @move-backward="onLayerMoveBackward"
         @bring-to-front="moveFurnitureToFront"
         @send-to-back="moveFurnitureToBack"
         @reorder="onLayerReorder"
+        @reorder-unified="onLayerReorderUnified"
       />
     </div>
 
@@ -1149,6 +1153,7 @@ const measurements = ref<Measurement[]>([]);
 const floorPlanImage = ref<FloorPlanImage | null>(null);
 const floorPlanImageRef = ref<HTMLInputElement | null>(null);
 const floorPlanImageElement = ref<HTMLImageElement | null>(null);
+const selectedFloorPlanImageId = ref<string | null>(null);
 
 // 평면도 이미지가 변경되면 Image 요소 생성
 watch(floorPlanImage, (newImage) => {
@@ -2330,6 +2335,14 @@ const onLayerSelect = (item: Furniture) => {
   selectedFurniture.value = item;
   selectedDoor.value = null;
   isRoomSelected.value = false;
+  selectedFloorPlanImageId.value = null;
+};
+
+const onLayerSelectImage = (image: FloorPlanImage) => {
+  selectedFloorPlanImageId.value = image.id;
+  selectedFurniture.value = null;
+  selectedDoor.value = null;
+  isRoomSelected.value = false;
 };
 
 const onLayerMoveForward = (item: Furniture) => {
@@ -2348,6 +2361,59 @@ const onLayerMoveBackward = (item: Furniture) => {
 
 const onLayerReorder = (fromId: string, toIndex: number) => {
   furnitureList.value = reorderToPosition(furnitureList.value, fromId, toIndex);
+  updateSelectedFurniture();
+  reorderFurnitureLayer();
+  saveToHistory();
+};
+
+// 통합 레이어 순서 변경 (가구 + 이미지)
+const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image', toIndex: number) => {
+  // 통합 레이어 목록 생성 (zIndex 내림차순)
+  interface UnifiedItem {
+    id: string;
+    type: 'furniture' | 'image';
+    zIndex: number;
+  }
+
+  const allItems: UnifiedItem[] = [];
+
+  // 가구 추가
+  for (const f of furnitureList.value) {
+    allItems.push({ id: f.id, type: 'furniture', zIndex: f.zIndex });
+  }
+
+  // 이미지 추가
+  if (floorPlanImage.value) {
+    allItems.push({ id: floorPlanImage.value.id, type: 'image', zIndex: floorPlanImage.value.zIndex });
+  }
+
+  // zIndex 내림차순 정렬
+  allItems.sort((a, b) => b.zIndex - a.zIndex);
+
+  // 현재 아이템의 인덱스 찾기
+  const fromIndex = allItems.findIndex(item => item.id === fromId && item.type === fromType);
+  if (fromIndex === -1 || fromIndex === toIndex) return;
+
+  // 새로운 순서로 배열 재구성
+  const newOrder = [...allItems];
+  const [movedItem] = newOrder.splice(fromIndex, 1);
+  if (!movedItem) return;
+  newOrder.splice(toIndex, 0, movedItem);
+
+  // zIndex 재할당 (내림차순이므로 큰 값부터)
+  const maxZIndex = newOrder.length - 1;
+  newOrder.forEach((item, index) => {
+    const newZIndex = maxZIndex - index;
+    if (item.type === 'furniture') {
+      const furniture = furnitureList.value.find(f => f.id === item.id);
+      if (furniture) {
+        furniture.zIndex = newZIndex;
+      }
+    } else if (item.type === 'image' && floorPlanImage.value) {
+      floorPlanImage.value.zIndex = newZIndex;
+    }
+  });
+
   updateSelectedFurniture();
   reorderFurnitureLayer();
   saveToHistory();

@@ -10,6 +10,7 @@ export interface FloorPlanImage {
   scale: number
   opacity: number
   locked: boolean
+  zIndex: number
 }
 
 // 이미지 크기 정보 타입
@@ -110,6 +111,7 @@ export function createFloorPlanImage(
     scale: 1,
     opacity: 0.5,
     locked: false,
+    zIndex: -1, // 기본적으로 가구보다 아래에 위치
   }
 }
 

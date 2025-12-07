@@ -13,21 +13,22 @@
     </div>
 
     <div class="flex-1 overflow-y-auto p-2">
-      <div v-if="sortedItems.length === 0" class="text-center text-gray-400 text-sm py-4">
-        가구가 없습니다
+      <div v-if="allItemsCount === 0" class="text-center text-gray-400 text-sm py-4">
+        레이어가 없습니다
       </div>
 
+      <!-- 통합 레이어 목록 (이미지 + 가구) -->
       <div
-        v-for="(item, index) in sortedItems"
+        v-for="(item, index) in unifiedItems"
         :key="item.id"
         draggable="true"
         class="flex items-center gap-2 p-2 rounded cursor-grab transition-colors"
         :class="[
-          selectedId === item.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50',
+          isItemSelected(item) ? (item.type === 'image' ? 'bg-purple-50 border border-purple-200' : 'bg-blue-50 border border-blue-200') : 'hover:bg-gray-50',
           dragOverIndex === index ? 'border-t-2 border-blue-500' : '',
           draggingId === item.id ? 'opacity-50' : ''
         ]"
-        @click="$emit('select', item)"
+        @click="onItemClick(item)"
         @dragstart="onDragStart($event, item, index)"
         @dragend="onDragEnd"
         @dragover.prevent="onDragOver($event, index)"
@@ -41,16 +42,43 @@
           </svg>
         </div>
 
-        <!-- 색상 미리보기 -->
-        <div
-          class="w-6 h-6 rounded border border-gray-300 flex-shrink-0"
-          :style="{ backgroundColor: item.color }"
-        />
+        <!-- 이미지인 경우 썸네일 -->
+        <template v-if="item.type === 'image'">
+          <div
+            class="w-6 h-6 rounded border border-gray-300 flex-shrink-0 bg-cover bg-center"
+            :style="{ backgroundImage: `url(${item.dataUrl})` }"
+          />
+        </template>
+        <!-- 가구인 경우 색상 미리보기 -->
+        <template v-else>
+          <div
+            class="w-6 h-6 rounded border border-gray-300 flex-shrink-0"
+            :style="{ backgroundColor: item.color }"
+          />
+        </template>
 
         <!-- 이름 -->
         <div class="flex-1 min-w-0">
           <div class="text-sm text-gray-800 truncate">{{ item.name }}</div>
-          <div class="text-xs text-gray-400">{{ item.width }}×{{ item.height }}cm</div>
+          <div class="text-xs text-gray-400">
+            <template v-if="item.type === 'image'">
+              {{ Math.round((item.opacity ?? 1) * 100) }}% 투명도
+              <span v-if="item.locked" class="ml-1">🔒</span>
+            </template>
+            <template v-else>
+              {{ item.width }}×{{ item.height }}cm
+            </template>
+          </div>
+        </div>
+
+        <!-- 타입 아이콘 -->
+        <div :class="item.type === 'image' ? 'text-purple-500' : 'text-blue-500'">
+          <svg v-if="item.type === 'image'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
         </div>
 
         <!-- 레이어 순서 조절 버튼 -->
@@ -59,7 +87,7 @@
             class="p-0.5 hover:bg-gray-200 rounded text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
             :disabled="isTopmost(item)"
             title="위로"
-            @click.stop="$emit('move-forward', item)"
+            @click.stop="item.type === 'furniture' && $emit('move-forward', item.original as Furniture)"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
@@ -69,7 +97,7 @@
             class="p-0.5 hover:bg-gray-200 rounded text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
             :disabled="isBottommost(item)"
             title="아래로"
-            @click.stop="$emit('move-backward', item)"
+            @click.stop="item.type === 'furniture' && $emit('move-backward', item.original as Furniture)"
           >
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -83,14 +111,14 @@
     <div class="border-t p-2 flex gap-1">
       <button
         class="flex-1 px-2 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50"
-        :disabled="!selectedId"
+        :disabled="!selectedId && !selectedImageId"
         @click="$emit('bring-to-front')"
       >
         맨 앞으로
       </button>
       <button
         class="flex-1 px-2 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50"
-        :disabled="!selectedId"
+        :disabled="!selectedId && !selectedImageId"
         @click="$emit('send-to-back')"
       >
         맨 뒤로
@@ -102,55 +130,132 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { Furniture } from '~/types/furniture'
-import { sortByZIndex } from '~/utils/layerOrder'
+import type { FloorPlanImage } from '~/utils/floorPlanImage'
+
+// 통합 레이어 아이템 타입
+interface UnifiedLayerItem {
+  id: string
+  type: 'furniture' | 'image'
+  name: string
+  zIndex: number
+  color?: string
+  width: number
+  height: number
+  dataUrl?: string
+  opacity?: number
+  locked?: boolean
+  original: Furniture | FloorPlanImage
+}
 
 const props = defineProps<{
   items: Furniture[]
   selectedId: string | null
+  image?: FloorPlanImage | null
+  selectedImageId?: string | null
 }>()
 
 const emit = defineEmits<{
   close: []
   select: [item: Furniture]
+  'select-image': [image: FloorPlanImage]
   'move-forward': [item: Furniture]
   'move-backward': [item: Furniture]
   'bring-to-front': []
   'send-to-back': []
   'reorder': [fromId: string, toIndex: number]
+  'reorder-unified': [fromId: string, fromType: 'furniture' | 'image', toIndex: number]
 }>()
 
 // 드래그 상태
 const draggingId = ref<string | null>(null)
+const draggingType = ref<'furniture' | 'image' | null>(null)
 const dragOverIndex = ref<number | null>(null)
 
-// 역순 정렬 (높은 zIndex가 위에 표시)
-const sortedItems = computed(() => {
-  return [...sortByZIndex(props.items)].reverse()
+// 통합 레이어 목록 (이미지 + 가구를 zIndex로 정렬)
+const unifiedItems = computed((): UnifiedLayerItem[] => {
+  const items: UnifiedLayerItem[] = []
+
+  // 가구 추가
+  for (const furniture of props.items) {
+    items.push({
+      id: furniture.id,
+      type: 'furniture',
+      name: furniture.name,
+      zIndex: furniture.zIndex,
+      color: furniture.color,
+      width: furniture.width,
+      height: furniture.height,
+      original: furniture,
+    })
+  }
+
+  // 이미지 추가
+  if (props.image) {
+    items.push({
+      id: props.image.id,
+      type: 'image',
+      name: props.image.originalName || '평면도 이미지',
+      zIndex: props.image.zIndex,
+      width: props.image.width,
+      height: props.image.height,
+      dataUrl: props.image.dataUrl,
+      opacity: props.image.opacity,
+      locked: props.image.locked,
+      original: props.image,
+    })
+  }
+
+  // zIndex 내림차순 정렬 (높은 zIndex가 위에 표시)
+  return items.sort((a, b) => b.zIndex - a.zIndex)
 })
 
-const isTopmost = (item: Furniture) => {
-  if (props.items.length <= 1) return true
-  const maxZIndex = Math.max(...props.items.map(i => i.zIndex))
+// 전체 아이템 수
+const allItemsCount = computed(() => unifiedItems.value.length)
+
+const isTopmost = (item: UnifiedLayerItem) => {
+  if (unifiedItems.value.length <= 1) return true
+  const maxZIndex = Math.max(...unifiedItems.value.map(i => i.zIndex))
   return item.zIndex === maxZIndex
 }
 
-const isBottommost = (item: Furniture) => {
-  if (props.items.length <= 1) return true
-  const minZIndex = Math.min(...props.items.map(i => i.zIndex))
+const isBottommost = (item: UnifiedLayerItem) => {
+  if (unifiedItems.value.length <= 1) return true
+  const minZIndex = Math.min(...unifiedItems.value.map(i => i.zIndex))
   return item.zIndex === minZIndex
 }
 
+// 아이템 선택 핸들러
+const onItemClick = (item: UnifiedLayerItem) => {
+  if (item.type === 'furniture') {
+    emit('select', item.original as Furniture)
+  } else {
+    emit('select-image', item.original as FloorPlanImage)
+  }
+}
+
+// 아이템이 선택되었는지 확인
+const isItemSelected = (item: UnifiedLayerItem) => {
+  if (item.type === 'furniture') {
+    return props.selectedId === item.id
+  } else {
+    return props.selectedImageId === item.id
+  }
+}
+
 // 드래그 이벤트 핸들러
-const onDragStart = (event: DragEvent, item: Furniture, _index: number) => {
+const onDragStart = (event: DragEvent, item: UnifiedLayerItem, _index: number) => {
   draggingId.value = item.id
+  draggingType.value = item.type
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', item.id)
+    event.dataTransfer.setData('item-type', item.type)
   }
 }
 
 const onDragEnd = () => {
   draggingId.value = null
+  draggingType.value = null
   dragOverIndex.value = null
 }
 
@@ -163,10 +268,11 @@ const onDragLeave = () => {
 }
 
 const onDrop = (_event: DragEvent, toIndex: number) => {
-  if (draggingId.value) {
-    emit('reorder', draggingId.value, toIndex)
+  if (draggingId.value && draggingType.value) {
+    emit('reorder-unified', draggingId.value, draggingType.value, toIndex)
   }
   draggingId.value = null
+  draggingType.value = null
   dragOverIndex.value = null
 }
 </script>
