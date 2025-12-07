@@ -96,3 +96,35 @@ export function sendBackward<T extends LayerItem>(items: T[], targetId: string):
     return item
   })
 }
+
+/**
+ * 아이템을 특정 위치로 이동 (드래그 앤 드롭용)
+ * @param items 아이템 배열
+ * @param fromId 이동할 아이템 ID
+ * @param toIndex 이동할 위치 인덱스 (역순 정렬 기준, 0이 맨 위)
+ */
+export function reorderToPosition<T extends LayerItem>(
+  items: T[],
+  fromId: string,
+  toIndex: number
+): T[] {
+  if (items.length <= 1) return items
+
+  // 역순 정렬 (높은 zIndex가 앞)
+  const sorted = [...sortByZIndex(items)].reverse()
+  const fromIndex = sorted.findIndex((item) => item.id === fromId)
+
+  if (fromIndex === -1 || fromIndex === toIndex) return items
+
+  // 새로운 순서로 배열 재구성
+  const newOrder = [...sorted]
+  const [movedItem] = newOrder.splice(fromIndex, 1)
+  newOrder.splice(toIndex, 0, movedItem!)
+
+  // zIndex 재할당 (역순이므로 큰 값부터)
+  const maxZIndex = newOrder.length - 1
+  return items.map((item) => {
+    const newIndex = newOrder.findIndex((o) => o.id === item.id)
+    return { ...item, zIndex: maxZIndex - newIndex }
+  })
+}

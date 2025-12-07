@@ -18,12 +18,29 @@
       </div>
 
       <div
-        v-for="item in sortedItems"
+        v-for="(item, index) in sortedItems"
         :key="item.id"
-        class="flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-gray-50 transition-colors"
-        :class="{ 'bg-blue-50 border border-blue-200': selectedId === item.id }"
+        draggable="true"
+        class="flex items-center gap-2 p-2 rounded cursor-grab transition-colors"
+        :class="[
+          selectedId === item.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50',
+          dragOverIndex === index ? 'border-t-2 border-blue-500' : '',
+          draggingId === item.id ? 'opacity-50' : ''
+        ]"
         @click="$emit('select', item)"
+        @dragstart="onDragStart($event, item, index)"
+        @dragend="onDragEnd"
+        @dragover.prevent="onDragOver($event, index)"
+        @dragleave="onDragLeave"
+        @drop.prevent="onDrop($event, index)"
       >
+        <!-- 드래그 핸들 -->
+        <div class="cursor-grab text-gray-400 hover:text-gray-600">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
+          </svg>
+        </div>
+
         <!-- 색상 미리보기 -->
         <div
           class="w-6 h-6 rounded border border-gray-300 flex-shrink-0"
@@ -83,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import type { Furniture } from '~/types/furniture'
 import { sortByZIndex } from '~/utils/layerOrder'
 
@@ -92,14 +109,19 @@ const props = defineProps<{
   selectedId: string | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   close: []
   select: [item: Furniture]
   'move-forward': [item: Furniture]
   'move-backward': [item: Furniture]
   'bring-to-front': []
   'send-to-back': []
+  'reorder': [fromId: string, toIndex: number]
 }>()
+
+// 드래그 상태
+const draggingId = ref<string | null>(null)
+const dragOverIndex = ref<number | null>(null)
 
 // 역순 정렬 (높은 zIndex가 위에 표시)
 const sortedItems = computed(() => {
@@ -116,5 +138,35 @@ const isBottommost = (item: Furniture) => {
   if (props.items.length <= 1) return true
   const minZIndex = Math.min(...props.items.map(i => i.zIndex))
   return item.zIndex === minZIndex
+}
+
+// 드래그 이벤트 핸들러
+const onDragStart = (event: DragEvent, item: Furniture, _index: number) => {
+  draggingId.value = item.id
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', item.id)
+  }
+}
+
+const onDragEnd = () => {
+  draggingId.value = null
+  dragOverIndex.value = null
+}
+
+const onDragOver = (_event: DragEvent, index: number) => {
+  dragOverIndex.value = index
+}
+
+const onDragLeave = () => {
+  dragOverIndex.value = null
+}
+
+const onDrop = (_event: DragEvent, toIndex: number) => {
+  if (draggingId.value) {
+    emit('reorder', draggingId.value, toIndex)
+  }
+  draggingId.value = null
+  dragOverIndex.value = null
 }
 </script>

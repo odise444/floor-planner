@@ -156,6 +156,7 @@
             rotation: furniture.rotation,
             draggable: true,
             name: `furniture-${furniture.id}`,
+            zIndex: furniture.zIndex,
           }"
           @dragmove="onFurnitureDragMove(furniture, $event)"
           @dragend="onFurnitureDragEnd(furniture, $event)"
@@ -559,8 +560,7 @@
       />
     </div>
 
-    <!-- 레이어 패널 (vue-konva 충돌로 임시 비활성화) -->
-    <!--
+    <!-- 레이어 패널 -->
     <div v-if="showLayerPanel" class="absolute top-4 right-16">
       <LayerPanel
         :items="furnitureList"
@@ -571,12 +571,11 @@
         @move-backward="onLayerMoveBackward"
         @bring-to-front="moveFurnitureToFront"
         @send-to-back="moveFurnitureToBack"
+        @reorder="onLayerReorder"
       />
     </div>
-    -->
 
-    <!-- 선택된 가구 레이어 정렬 도구 (vue-konva 충돌로 임시 비활성화) -->
-    <!--
+    <!-- 선택된 가구 레이어 정렬 도구 -->
     <div v-if="selectedFurniture && !showEditForm" class="absolute bottom-4 left-4">
       <div class="bg-white rounded-lg shadow-lg p-2 flex items-center gap-1">
         <span class="text-xs text-gray-500 px-2">레이어:</span>
@@ -618,7 +617,6 @@
         </button>
       </div>
     </div>
-    -->
 
     <!-- 방 편집 폼 (더블클릭 시 표시) -->
     <div v-if="isRoomSelected && showRoomEditForm" class="absolute top-4 left-4">
@@ -802,7 +800,7 @@ import { saveFloorPlan, loadFloorPlan, exportToJson } from "~/utils/floorPlanSto
 import { useHistory } from "~/composables/useHistory";
 import { createMeasurement, getMeasurementMidpoint, formatDistance, type Measurement, type Point } from "~/utils/measureTool";
 import { loadFloorPlanImageFromFile, type FloorPlanImage } from "~/utils/floorPlanImage";
-import { getNextZIndex, sortByZIndex, bringToFront, sendToBack, bringForward, sendBackward } from "~/utils/layerOrder";
+import { getNextZIndex, sortByZIndex, bringToFront, sendToBack, bringForward, sendBackward, reorderToPosition } from "~/utils/layerOrder";
 import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
 import DoorEditForm from "~/components/editor/DoorEditForm.vue";
 import LayerPanel from "~/components/editor/LayerPanel.vue";
@@ -2267,24 +2265,38 @@ const reorderFurnitureLayer = () => {
     const layer = furnitureLayerRef.value?.getNode();
     if (!layer) return;
 
-    const children = layer.getChildren();
-    if (!children || children.length === 0) return;
+    // zIndex 기준으로 노드 순서 재정렬 (낮은 것부터 moveToTop하여 높은 것이 맨 위로)
+    const sortedFurniture = [...furnitureList.value].sort((a, b) => a.zIndex - b.zIndex);
 
-    // zIndex 기준으로 children 정렬 (낮은 값이 뒤로)
-    children.sort((a: any, b: any) => {
-      const aZIndex = a.attrs?.zIndex ?? 0;
-      const bZIndex = b.attrs?.zIndex ?? 0;
-      return aZIndex - bZIndex;
+    sortedFurniture.forEach((furniture) => {
+      const group = furnitureRefs.value.get(furniture.id);
+      if (group) {
+        const node = group.getNode ? group.getNode() : group;
+        if (node && typeof node.moveToTop === 'function') {
+          node.moveToTop();
+        }
+      }
     });
 
     layer.batchDraw();
   });
 };
 
+// 레이어 정렬 후 선택된 가구 참조 갱신
+const updateSelectedFurniture = () => {
+  if (selectedFurniture.value) {
+    const updated = furnitureList.value.find(f => f.id === selectedFurniture.value!.id);
+    if (updated) {
+      selectedFurniture.value = updated;
+    }
+  }
+};
+
 // 레이어 정렬 함수들
 const moveFurnitureToFront = () => {
   if (!selectedFurniture.value) return;
   furnitureList.value = bringToFront(furnitureList.value, selectedFurniture.value.id);
+  updateSelectedFurniture();
   reorderFurnitureLayer();
   saveToHistory();
 };
@@ -2292,6 +2304,7 @@ const moveFurnitureToFront = () => {
 const moveFurnitureToBack = () => {
   if (!selectedFurniture.value) return;
   furnitureList.value = sendToBack(furnitureList.value, selectedFurniture.value.id);
+  updateSelectedFurniture();
   reorderFurnitureLayer();
   saveToHistory();
 };
@@ -2299,6 +2312,7 @@ const moveFurnitureToBack = () => {
 const moveFurnitureForward = () => {
   if (!selectedFurniture.value) return;
   furnitureList.value = bringForward(furnitureList.value, selectedFurniture.value.id);
+  updateSelectedFurniture();
   reorderFurnitureLayer();
   saveToHistory();
 };
@@ -2306,6 +2320,7 @@ const moveFurnitureForward = () => {
 const moveFurnitureBackward = () => {
   if (!selectedFurniture.value) return;
   furnitureList.value = sendBackward(furnitureList.value, selectedFurniture.value.id);
+  updateSelectedFurniture();
   reorderFurnitureLayer();
   saveToHistory();
 };
@@ -2319,12 +2334,21 @@ const onLayerSelect = (item: Furniture) => {
 
 const onLayerMoveForward = (item: Furniture) => {
   furnitureList.value = bringForward(furnitureList.value, item.id);
+  updateSelectedFurniture();
   reorderFurnitureLayer();
   saveToHistory();
 };
 
 const onLayerMoveBackward = (item: Furniture) => {
   furnitureList.value = sendBackward(furnitureList.value, item.id);
+  updateSelectedFurniture();
+  reorderFurnitureLayer();
+  saveToHistory();
+};
+
+const onLayerReorder = (fromId: string, toIndex: number) => {
+  furnitureList.value = reorderToPosition(furnitureList.value, fromId, toIndex);
+  updateSelectedFurniture();
   reorderFurnitureLayer();
   saveToHistory();
 };
