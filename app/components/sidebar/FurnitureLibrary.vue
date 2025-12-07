@@ -1,5 +1,5 @@
 <template>
-  <aside class="w-64 bg-white border-r border-gray-200 flex flex-col">
+  <div class="flex flex-col h-full">
     <!-- 사이드바 헤더 -->
     <div class="p-4 border-b border-gray-200">
       <h2 class="font-medium text-gray-700">가구 라이브러리</h2>
@@ -200,7 +200,7 @@
         </div>
       </div>
     </div>
-  </aside>
+  </div>
 </template>
 
 <script setup lang="ts">

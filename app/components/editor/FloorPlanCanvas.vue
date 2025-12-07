@@ -521,17 +521,6 @@
 
     <!-- 줌 컨트롤 -->
     <div class="absolute bottom-4 right-4 flex flex-col gap-2">
-      <!-- 레이어 패널 버튼 -->
-      <button
-        class="w-10 h-10 rounded-lg shadow flex items-center justify-center"
-        :class="showLayerPanel ? 'bg-blue-500 text-white' : 'bg-white hover:bg-gray-50'"
-        title="레이어 패널 (L)"
-        @click="showLayerPanel = !showLayerPanel"
-      >
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-      </button>
       <!-- 벽체 그리기 버튼 -->
       <button
         class="w-10 h-10 rounded-lg shadow flex items-center justify-center"
@@ -723,36 +712,6 @@
         @merge="onWallMerge"
         @join="onWallJoin"
         @close="closeWallEditForm"
-      />
-    </div>
-
-    <!-- 레이어 패널 -->
-    <div v-if="showLayerPanel" class="absolute top-4 right-16">
-      <LayerPanel
-        :items="furnitureList"
-        :selected-id="selectedFurniture?.id ?? null"
-        :image="floorPlanImage"
-        :selected-image-id="selectedFloorPlanImageId"
-        :room="room"
-        :selected-room-id="isRoomSelected ? room?.id ?? null : null"
-        :walls="wallList"
-        :selected-wall-id="selectedWall?.id ?? null"
-        :groups="objectGroups"
-        :selected-group-id="selectedGroup?.id ?? null"
-        @close="showLayerPanel = false"
-        @select="onLayerSelect"
-        @select-image="onLayerSelectImage"
-        @select-room="onLayerSelectRoom"
-        @select-wall="onLayerSelectWall"
-        @select-group="onLayerSelectGroup"
-        @move-forward="onLayerMoveForward"
-        @move-backward="onLayerMoveBackward"
-        @bring-to-front="moveFurnitureToFront"
-        @send-to-back="moveFurnitureToBack"
-        @reorder="onLayerReorder"
-        @reorder-unified="onLayerReorderUnified"
-        @create-group="onCreateGroup"
-        @ungroup="onUngroup"
       />
     </div>
 
@@ -987,7 +946,6 @@ import { createGroup, getWallBounds, mergeBoundingBoxes, type ObjectGroup, type 
 import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
 import DoorEditForm from "~/components/editor/DoorEditForm.vue";
 import WallEditForm from "~/components/editor/WallEditForm.vue";
-import LayerPanel from "~/components/editor/LayerPanel.vue";
 import type { Furniture, FurnitureShape, LShapeDirection } from "~/types/furniture";
 
 interface Room {
@@ -1409,9 +1367,6 @@ const selectedDoor = ref<Door | null>(null);
 
 // 편집 폼 표시 상태 (더블클릭 시 true)
 const showEditForm = ref(false);
-
-// 레이어 패널 표시 상태
-const showLayerPanel = ref(false);
 
 // 측정 도구 상태
 const isMeasureMode = ref(false);
@@ -3129,6 +3084,24 @@ const onLayerMoveBackward = (item: Furniture) => {
   saveToHistory();
 };
 
+const onLayerDelete = (item: Furniture) => {
+  furnitureList.value = furnitureList.value.filter(f => f.id !== item.id);
+  if (selectedFurniture.value?.id === item.id) {
+    selectedFurniture.value = null;
+  }
+  reorderFurnitureLayer();
+  saveToHistory();
+};
+
+const onToggleImageLock = (image: FloorPlanImage) => {
+  if (floorPlanImage.value && floorPlanImage.value.id === image.id) {
+    floorPlanImage.value = {
+      ...floorPlanImage.value,
+      locked: !floorPlanImage.value.locked,
+    };
+  }
+};
+
 const onLayerReorder = (fromId: string, toIndex: number) => {
   furnitureList.value = reorderToPosition(furnitureList.value, fromId, toIndex);
   updateSelectedFurniture();
@@ -3814,11 +3787,6 @@ const onKeyDown = (e: KeyboardEvent) => {
     deleteWall();
   }
 
-  // L키로 레이어 패널 토글
-  if (e.key === "l" && !showEditForm.value) {
-    showLayerPanel.value = !showLayerPanel.value;
-  }
-
   // P키로 폴리곤 뷰 토글
   if (e.key === "p" && !showEditForm.value) {
     showPolygonView.value = !showPolygonView.value;
@@ -4115,22 +4083,48 @@ const exportImage = (format: 'png' | 'jpeg' = 'png') => {
 
 // 외부에서 접근 가능하도록 노출
 defineExpose({
+  // 데이터
   room,
   furnitureList,
   doorList,
+  wallList,
+  floorPlanImage,
+  groups: objectGroups,
+  // 선택 상태
+  selectedFurniture,
+  selectedWall,
+  selectedFloorPlanImageId,
+  isRoomSelected,
+  selectedGroup,
+  // 모달/폼
   showDoorModal,
   doorWall,
   doorPosition,
   doorWidth,
   createDoor,
+  // 파일 저장/불러오기
   saveToLocalStorage,
   loadFromLocalStorage,
   exportJson,
   exportImage,
   resetViewToRoom,
+  // 히스토리
   undo,
   redo,
   canUndo: history.canUndo,
   canRedo: history.canRedo,
+  // 레이어 패널 이벤트 핸들러
+  onLayerSelect,
+  onLayerSelectImage,
+  onLayerSelectRoom,
+  onLayerSelectWall,
+  onLayerSelectGroup,
+  onLayerReorder,
+  onLayerMoveForward,
+  onLayerMoveBackward,
+  onLayerDelete,
+  onToggleImageLock,
+  onCreateGroup,
+  onUngroup,
 });
 </script>

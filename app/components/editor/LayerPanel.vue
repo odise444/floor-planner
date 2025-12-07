@@ -1,5 +1,12 @@
 <template>
-  <div class="bg-white rounded-lg shadow-lg w-72 max-h-[500px] flex flex-col">
+  <div
+    :class="[
+      'flex flex-col',
+      embedded
+        ? 'h-full w-full'
+        : 'bg-white rounded-lg shadow-lg w-72 max-h-[500px]'
+    ]"
+  >
     <div class="flex items-center justify-between p-3 border-b">
       <h3 class="font-semibold text-gray-800 text-sm">레이어</h3>
       <div class="flex items-center gap-2">
@@ -15,6 +22,7 @@
           </svg>
         </button>
         <button
+          v-if="!embedded"
           class="text-gray-400 hover:text-gray-600"
           @click="$emit('close')"
         >
@@ -290,6 +298,7 @@ const props = defineProps<{
   selectedWallId?: string | null
   groups?: ObjectGroup[]
   selectedGroupId?: string | null
+  embedded?: boolean
 }>()
 
 const emit = defineEmits<{
