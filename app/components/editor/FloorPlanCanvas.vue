@@ -233,9 +233,8 @@
             }"
           />
         </v-group>
-        <!-- 리사이즈 트랜스포머 (선택된 가구에 표시) -->
+        <!-- 리사이즈 트랜스포머 (항상 렌더링, nodes로 제어) -->
         <v-transformer
-          v-if="selectedFurniture"
           ref="transformerRef"
           :config="{
             rotateEnabled: false,
@@ -251,21 +250,21 @@
         />
         <!-- L자형 비율 조절 핸들 (가로 방향) -->
         <v-rect
-          v-if="selectedFurniture?.shape === 'l-shape'"
-          :config="getLShapeHandleHorizontal(selectedFurniture)"
-          @dragmove="onLShapeHandleDragH(selectedFurniture, $event)"
+          v-show="selectedFurniture?.shape === 'l-shape'"
+          :config="selectedFurniture?.shape === 'l-shape' ? getLShapeHandleHorizontal(selectedFurniture) : { visible: false }"
+          @dragmove="onLShapeHandleDragH(selectedFurniture!, $event)"
         />
         <!-- L자형 비율 조절 핸들 (세로 방향) -->
         <v-rect
-          v-if="selectedFurniture?.shape === 'l-shape'"
-          :config="getLShapeHandleVertical(selectedFurniture)"
-          @dragmove="onLShapeHandleDragV(selectedFurniture, $event)"
+          v-show="selectedFurniture?.shape === 'l-shape'"
+          :config="selectedFurniture?.shape === 'l-shape' ? getLShapeHandleVertical(selectedFurniture) : { visible: false }"
+          @dragmove="onLShapeHandleDragV(selectedFurniture!, $event)"
         />
       </v-layer>
 
-      <!-- 거리 표시 레이어 (선택된 가구가 있을 때만) -->
-      <v-layer v-if="selectedFurniture && room">
-        <!-- 벽/가구까지의 거리선 -->
+      <!-- 거리 표시 레이어 (항상 렌더링) -->
+      <v-layer>
+        <!-- 벽/가구까지의 거리선 (selectedFurniture && room 조건은 distanceLines computed에서 처리) -->
         <template v-for="dist in distanceLines" :key="dist.id">
           <!-- 거리선 -->
           <v-line
@@ -1498,6 +1497,7 @@ const onMouseDown = (e: any) => {
     isRoomSelected.value = false;
     showEditForm.value = false;
     showRoomEditForm.value = false;
+    updateTransformer();
   }
 };
 
@@ -1519,8 +1519,9 @@ const onRoomClick = () => {
   selectedDoor.value = null;
   showEditForm.value = false;
   isRoomSelected.value = true;
+  updateTransformer();
 
-  // 다음 틱에서 Transformer 연결
+  // 다음 틱에서 Room Transformer 연결
   nextTick(() => {
     if (roomTransformerRef.value && roomRectRef.value) {
       const transformer = roomTransformerRef.value.getNode();
@@ -1669,6 +1670,7 @@ const onDrop = (event: DragEvent) => {
   furnitureList.value.push(newFurniture);
   selectedFurniture.value = newFurniture;
   saveToHistory();
+  updateTransformer();
 };
 
 // 스냅 거리 (px)
@@ -2001,12 +2003,21 @@ const closeEditForm = () => {
 // Transformer 업데이트 (선택된 가구에 연결)
 const updateTransformer = () => {
   nextTick(() => {
-    if (!transformerRef.value || !selectedFurniture.value) return;
+    if (!transformerRef.value) return;
 
     const transformer = transformerRef.value.getNode();
+    if (!transformer) return;
+
+    // 선택된 가구가 없으면 nodes 비우기
+    if (!selectedFurniture.value) {
+      transformer.nodes([]);
+      transformer.getLayer()?.batchDraw();
+      return;
+    }
+
     const furnitureGroup = furnitureRefs.value.get(selectedFurniture.value.id);
 
-    if (transformer && furnitureGroup) {
+    if (furnitureGroup) {
       const node = furnitureGroup.getNode ? furnitureGroup.getNode() : furnitureGroup;
       transformer.nodes([node]);
       transformer.getLayer()?.batchDraw();
