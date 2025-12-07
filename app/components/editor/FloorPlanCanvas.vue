@@ -81,8 +81,8 @@
           <!-- 문 프레임 (벽 끊김 표시) -->
           <v-rect
             :config="{
-              width: door.wall === 'top' || door.wall === 'bottom' ? door.width * scale.value : 10,
-              height: door.wall === 'left' || door.wall === 'right' ? door.width * scale.value : 10,
+              width: door.wall === 'top' || door.wall === 'bottom' ? door.width * scale : 10,
+              height: door.wall === 'left' || door.wall === 'right' ? door.width * scale : 10,
               fill: '#ffffff',
               stroke: selectedDoor?.id === door.id ? '#3b82f6' : '#374151',
               strokeWidth: selectedDoor?.id === door.id ? 2 : 1,
@@ -102,8 +102,8 @@
               text: `${door.width}`,
               fontSize: 10,
               fill: '#374151',
-              x: door.wall === 'top' || door.wall === 'bottom' ? (door.width * scale.value) / 2 - 10 : -15,
-              y: door.wall === 'left' || door.wall === 'right' ? (door.width * scale.value) / 2 - 5 : -15,
+              x: door.wall === 'top' || door.wall === 'bottom' ? (door.width * scale) / 2 - 10 : -15,
+              y: door.wall === 'left' || door.wall === 'right' ? (door.width * scale) / 2 - 5 : -15,
             }"
           />
         </v-group>
@@ -149,10 +149,10 @@
           :key="furniture.id"
           :ref="(el: any) => setFurnitureRef(furniture.id, el)"
           :config="{
-            x: furniture.x + (furniture.width * scale.value) / 2,
-            y: furniture.y + (furniture.height * scale.value) / 2,
-            offsetX: (furniture.width * scale.value) / 2,
-            offsetY: (furniture.height * scale.value) / 2,
+            x: furniture.x + (furniture.width * scale) / 2,
+            y: furniture.y + (furniture.height * scale) / 2,
+            offsetX: (furniture.width * scale) / 2,
+            offsetY: (furniture.height * scale) / 2,
             rotation: furniture.rotation,
             draggable: true,
             name: `furniture-${furniture.id}`,
@@ -168,8 +168,8 @@
           <v-rect
             v-if="!furniture.shape || furniture.shape === 'rect'"
             :config="{
-              width: furniture.width * scale.value,
-              height: furniture.height * scale.value,
+              width: furniture.width * scale,
+              height: furniture.height * scale,
               fill: furniture.color,
               stroke: '#374151',
               strokeWidth: 1,
@@ -180,8 +180,8 @@
           <v-circle
             v-else-if="furniture.shape === 'circle'"
             :config="{
-              x: (furniture.width * scale.value) / 2,
-              y: (furniture.height * scale.value) / 2,
+              x: (furniture.width * scale) / 2,
+              y: (furniture.height * scale) / 2,
               radius: Math.min(furniture.width, furniture.height) * scale / 2,
               fill: furniture.color,
               stroke: '#374151',
@@ -192,10 +192,10 @@
           <v-ellipse
             v-else-if="furniture.shape === 'ellipse'"
             :config="{
-              x: (furniture.width * scale.value) / 2,
-              y: (furniture.height * scale.value) / 2,
-              radiusX: (furniture.width * scale.value) / 2,
-              radiusY: (furniture.height * scale.value) / 2,
+              x: (furniture.width * scale) / 2,
+              y: (furniture.height * scale) / 2,
+              radiusX: (furniture.width * scale) / 2,
+              radiusY: (furniture.height * scale) / 2,
               fill: furniture.color,
               stroke: '#374151',
               strokeWidth: 1,
@@ -216,7 +216,7 @@
               text: `${furniture.width}cm`,
               fontSize: 10,
               fill: '#374151',
-              x: (furniture.width * scale.value) / 2,
+              x: (furniture.width * scale) / 2,
               y: 4,
               offsetX: 15,
             }"
@@ -228,7 +228,7 @@
               fontSize: 10,
               fill: '#374151',
               x: 4,
-              y: (furniture.height * scale.value) / 2,
+              y: (furniture.height * scale) / 2,
               rotation: -90,
               offsetX: 15,
             }"
@@ -2045,17 +2045,19 @@ const updateTransformer = () => {
   });
 };
 
-// 최소/최대 크기 제한 함수
-const MIN_SIZE = 20 * scale; // 최소 20cm
-const MAX_SIZE = 500 * scale; // 최대 500cm
+// 최소/최대 크기 제한 (cm 단위)
+const MIN_SIZE_CM = 20; // 최소 20cm
+const MAX_SIZE_CM = 500; // 최대 500cm
 
 const boundBoxFunc = (oldBox: any, newBox: any) => {
+  const minSizePx = MIN_SIZE_CM * scale.value;
+  const maxSizePx = MAX_SIZE_CM * scale.value;
   // 최소 크기 제한
-  if (newBox.width < MIN_SIZE || newBox.height < MIN_SIZE) {
+  if (newBox.width < minSizePx || newBox.height < minSizePx) {
     return oldBox;
   }
   // 최대 크기 제한
-  if (newBox.width > MAX_SIZE || newBox.height > MAX_SIZE) {
+  if (newBox.width > maxSizePx || newBox.height > maxSizePx) {
     return oldBox;
   }
   return newBox;
@@ -2069,9 +2071,9 @@ const onFurnitureTransformEnd = (furniture: Furniture, e: any) => {
   const scaleX = node.scaleX();
   const scaleY = node.scaleY();
 
-  // 새 크기 계산 (픽셀 -> cm)
-  const newWidth = Math.round((furniture.width * scale.valueX));
-  const newHeight = Math.round((furniture.height * scale.valueY));
+  // 새 크기 계산 (노드 스케일 변환을 cm 크기로 변환)
+  const newWidth = Math.round(furniture.width * scaleX);
+  const newHeight = Math.round(furniture.height * scaleY);
 
   // 스케일 리셋 (크기 변환을 width/height로 적용)
   node.scaleX(1);
