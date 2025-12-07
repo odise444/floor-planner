@@ -14,13 +14,8 @@
       @mousemove="onMouseMove"
       @mouseup="onMouseUp"
     >
-      <!-- 그리드 레이어 (고정, 스테이지 변환 무시) -->
-      <v-layer :config="{ listening: false }" v-if="false">
-        <v-line v-for="line in gridLines" :key="line.id" :config="line" />
-      </v-layer>
-
-      <!-- 평면도 이미지 레이어 (맨 아래) -->
-      <v-layer>
+      <!-- 평면도 이미지 레이어 (배경) -->
+      <v-layer :config="{ listening: true }">
         <v-image
           v-if="floorPlanImage && floorPlanImageElement"
           :config="{
@@ -36,8 +31,8 @@
         />
       </v-layer>
 
-      <!-- 방/벽 레이어 (이미지 위) -->
-      <v-layer>
+      <!-- 객체 레이어 (방/문/벽체/가구) -->
+      <v-layer ref="objectLayerRef">
         <v-rect
           v-if="room"
           ref="roomRectRef"
@@ -91,7 +86,7 @@
           v-for="door in doorList"
           :key="door.id"
           :config="getDoorGroupConfig(door)"
-          @click="selectDoor(door)"
+          @click="(e: any) => selectDoor(door, e)"
           @dblclick="openDoorEditForm(door)"
           @dragend="onDoorDragEnd(door, $event)"
         >
@@ -101,8 +96,22 @@
               width: door.wall === 'top' || door.wall === 'bottom' ? door.width * scale : 10,
               height: door.wall === 'left' || door.wall === 'right' ? door.width * scale : 10,
               fill: '#ffffff',
-              stroke: selectedDoor?.id === door.id ? '#3b82f6' : '#374151',
-              strokeWidth: selectedDoor?.id === door.id ? 2 : 1,
+              stroke: isMultiSelected(door.id, 'door') ? '#22c55e' : (selectedDoor?.id === door.id ? '#3b82f6' : '#374151'),
+              strokeWidth: isMultiSelected(door.id, 'door') || selectedDoor?.id === door.id ? 2 : 1,
+            }"
+          />
+          <!-- 다중 선택 표시용 외곽선 -->
+          <v-rect
+            v-if="isMultiSelected(door.id, 'door')"
+            :config="{
+              x: -4,
+              y: -4,
+              width: (door.wall === 'top' || door.wall === 'bottom' ? door.width * scale : 10) + 8,
+              height: (door.wall === 'left' || door.wall === 'right' ? door.width * scale : 10) + 8,
+              stroke: '#22c55e',
+              strokeWidth: 2,
+              dash: [6, 3],
+              listening: false,
             }"
           />
           <!-- 문 열림 호 (arc) -->
@@ -140,10 +149,80 @@
             boundBoxFunc: roomBoundBoxFunc,
           }"
         />
-      </v-layer>
+        <!-- 폴리곤 뷰 (연결된 벽체를 폴리곤으로 렌더링) -->
+        <template v-if="showPolygonView">
+          <template v-for="polygon in wallPolygons" :key="polygon.id">
+            <!-- 벽체 폴리곤 (외곽선 + 내곽선을 하나의 닫힌 도형으로) -->
+            <v-line
+              :config="getPolygonRenderConfig(polygon)"
+            />
+          </template>
+        </template>
 
-      <!-- 가구 레이어 -->
-      <v-layer ref="furnitureLayerRef">
+        <!-- 기존 벽체들 (폴리곤 뷰가 아닐 때만) -->
+        <template v-if="!showPolygonView" v-for="wall in wallList" :key="wall.id">
+          <v-rect
+            :config="{
+              ...getWallRenderConfig(wall),
+              draggable: selectedWall?.id === wall.id && !isWallDrawMode,
+            }"
+            @click="(e: any) => onWallClick(wall, e)"
+            @dblclick="openWallEditForm(wall)"
+            @dragstart="(e: any) => onWallDragStart(e, wall)"
+            @dragend="(e: any) => onWallDragEnd(e, wall)"
+          />
+          <!-- 벽체 길이 표시 -->
+          <v-text
+            :config="getWallLengthTextConfig(wall)"
+          />
+          <!-- 선택된 벽체의 끝점 핸들 -->
+          <template v-if="selectedWall?.id === wall.id && !isWallDrawMode">
+            <!-- 시작점 핸들 -->
+            <v-circle
+              :config="{
+                x: wall.startX * scale,
+                y: wall.startY * scale,
+                radius: 8,
+                fill: '#3b82f6',
+                stroke: '#ffffff',
+                strokeWidth: 2,
+                draggable: true,
+                name: 'wall-handle-start',
+              }"
+              @dragmove="(e: any) => onWallEndpointDrag(e, wall, 'start')"
+              @dragend="(e: any) => onWallEndpointDragEnd(e, wall, 'start')"
+            />
+            <!-- 끝점 핸들 -->
+            <v-circle
+              :config="{
+                x: wall.endX * scale,
+                y: wall.endY * scale,
+                radius: 8,
+                fill: '#3b82f6',
+                stroke: '#ffffff',
+                strokeWidth: 2,
+                draggable: true,
+                name: 'wall-handle-end',
+              }"
+              @dragmove="(e: any) => onWallEndpointDrag(e, wall, 'end')"
+              @dragend="(e: any) => onWallEndpointDragEnd(e, wall, 'end')"
+            />
+          </template>
+        </template>
+        <!-- 벽체 그리기 프리뷰 -->
+        <v-line
+          v-if="wallDrawPreview"
+          :config="{
+            points: [wallDrawPreview.startX, wallDrawPreview.startY, wallDrawPreview.endX, wallDrawPreview.endY],
+            stroke: '#22c55e',
+            strokeWidth: 15 * scale,
+            lineCap: 'round',
+            dash: [10, 5],
+            opacity: 0.7,
+          }"
+        />
+
+        <!-- 가구들 -->
         <v-group
           v-for="furniture in furnitureList"
           :key="furniture.id"
@@ -158,12 +237,28 @@
             name: `furniture-${furniture.id}`,
             zIndex: furniture.zIndex,
           }"
-          @dragmove="onFurnitureDragMove(furniture, $event)"
-          @dragend="onFurnitureDragEnd(furniture, $event)"
-          @click="selectFurniture(furniture)"
+          @dragstart="(e: any) => onFurnitureDragStart(furniture, e)"
+          @dragmove="(e: any) => onFurnitureDragMove(furniture, e)"
+          @dragend="(e: any) => onFurnitureDragEnd(furniture, e)"
+          @click="(e: any) => selectFurniture(furniture, e)"
           @dblclick="openFurnitureEditForm(furniture)"
           @transformend="onFurnitureTransformEnd(furniture, $event)"
         >
+          <!-- 다중 선택 표시용 배경 -->
+          <v-rect
+            v-if="isMultiSelected(furniture.id, 'furniture')"
+            :config="{
+              x: -4,
+              y: -4,
+              width: furniture.width * scale + 8,
+              height: furniture.height * scale + 8,
+              stroke: '#22c55e',
+              strokeWidth: 2,
+              dash: [6, 3],
+              cornerRadius: 6,
+              listening: false,
+            }"
+          />
           <!-- 사각형 (기본) -->
           <v-rect
             v-if="!furniture.shape || furniture.shape === 'rect'"
@@ -171,8 +266,8 @@
               width: furniture.width * scale,
               height: furniture.height * scale,
               fill: furniture.color,
-              stroke: '#374151',
-              strokeWidth: 1,
+              stroke: isMultiSelected(furniture.id, 'furniture') ? '#22c55e' : '#374151',
+              strokeWidth: isMultiSelected(furniture.id, 'furniture') ? 2 : 1,
               cornerRadius: 4,
             }"
           />
@@ -184,8 +279,8 @@
               y: (furniture.height * scale) / 2,
               radius: Math.min(furniture.width, furniture.height) * scale / 2,
               fill: furniture.color,
-              stroke: '#374151',
-              strokeWidth: 1,
+              stroke: isMultiSelected(furniture.id, 'furniture') ? '#22c55e' : '#374151',
+              strokeWidth: isMultiSelected(furniture.id, 'furniture') ? 2 : 1,
             }"
           />
           <!-- 타원형 -->
@@ -197,8 +292,8 @@
               radiusX: (furniture.width * scale) / 2,
               radiusY: (furniture.height * scale) / 2,
               fill: furniture.color,
-              stroke: '#374151',
-              strokeWidth: 1,
+              stroke: isMultiSelected(furniture.id, 'furniture') ? '#22c55e' : '#374151',
+              strokeWidth: isMultiSelected(furniture.id, 'furniture') ? 2 : 1,
             }"
           />
           <!-- L자형 -->
@@ -261,9 +356,42 @@
           :config="selectedFurniture?.shape === 'l-shape' ? getLShapeHandleVertical(selectedFurniture) : { visible: false }"
           @dragmove="onLShapeHandleDragV(selectedFurniture!, $event)"
         />
+
+        <!-- 그룹 바운딩 박스 -->
+        <template v-for="group in objectGroups" :key="group.id">
+          <v-rect
+            :config="{
+              x: group.x,
+              y: group.y,
+              width: group.width,
+              height: group.height,
+              fill: 'transparent',
+              stroke: selectedGroup?.id === group.id ? '#8b5cf6' : group.color,
+              strokeWidth: selectedGroup?.id === group.id ? 3 : 2,
+              dash: [8, 4],
+              cornerRadius: 4,
+              draggable: !group.locked,
+              name: `group-${group.id}`,
+            }"
+            @click="(e: any) => onGroupClick(group, e)"
+            @dragstart="(e: any) => onGroupDragStart(e, group)"
+            @dragend="(e: any) => onGroupDragEnd(e, group)"
+          />
+          <!-- 그룹 라벨 -->
+          <v-text
+            :config="{
+              x: group.x,
+              y: group.y - 18,
+              text: group.name,
+              fontSize: 12,
+              fill: selectedGroup?.id === group.id ? '#8b5cf6' : group.color,
+              fontStyle: 'bold',
+            }"
+          />
+        </template>
       </v-layer>
 
-      <!-- 거리 표시 레이어 (항상 렌더링) -->
+      <!-- 오버레이 레이어 (거리 표시 + 측정) -->
       <v-layer>
         <!-- 벽/가구까지의 거리선 (selectedFurniture && room 조건은 distanceLines computed에서 처리) -->
         <template v-for="dist in distanceLines" :key="dist.id">
@@ -290,10 +418,6 @@
             }"
           />
         </template>
-      </v-layer>
-
-      <!-- 측정 레이어 -->
-      <v-layer>
       <!-- 완료된 측정들 -->
       <template v-for="m in measurements" :key="m.id">
         <v-line
@@ -388,6 +512,13 @@
       <span v-else class="ml-2 text-sm opacity-75">클릭하여 시작점 설정</span>
     </div>
 
+    <!-- 벽체 그리기 모드 표시 -->
+    <div v-if="isWallDrawMode" class="absolute top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow">
+      <span>벽체 그리기 모드</span>
+      <span v-if="wallDrawStart" class="ml-2 text-sm opacity-75">드래그하여 벽체 생성</span>
+      <span v-else class="ml-2 text-sm opacity-75">클릭하여 시작점 설정 (Shift: 각도 스냅)</span>
+    </div>
+
     <!-- 줌 컨트롤 -->
     <div class="absolute bottom-4 right-4 flex flex-col gap-2">
       <!-- 레이어 패널 버튼 -->
@@ -399,6 +530,28 @@
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+      </button>
+      <!-- 벽체 그리기 버튼 -->
+      <button
+        class="w-10 h-10 rounded-lg shadow flex items-center justify-center"
+        :class="isWallDrawMode ? 'bg-green-600 text-white' : 'bg-white hover:bg-gray-50'"
+        title="벽체 그리기 (W)"
+        @click="toggleWallDrawMode"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      <!-- 폴리곤 뷰 토글 버튼 -->
+      <button
+        class="w-10 h-10 rounded-lg shadow flex items-center justify-center"
+        :class="showPolygonView ? 'bg-purple-600 text-white' : 'bg-white hover:bg-gray-50'"
+        title="폴리곤 뷰 (P)"
+        @click="showPolygonView = !showPolygonView"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
         </svg>
       </button>
       <!-- 측정 버튼 -->
@@ -560,6 +713,19 @@
       />
     </div>
 
+    <!-- 선택된 벽체 편집 폼 (더블클릭 시 표시) -->
+    <div v-if="selectedWall && showWallEditForm" class="absolute top-4 left-4">
+      <WallEditForm
+        :wall="selectedWall"
+        :all-walls="wallList"
+        @update="onWallUpdate"
+        @delete="deleteWall"
+        @merge="onWallMerge"
+        @join="onWallJoin"
+        @close="closeWallEditForm"
+      />
+    </div>
+
     <!-- 레이어 패널 -->
     <div v-if="showLayerPanel" class="absolute top-4 right-16">
       <LayerPanel
@@ -569,16 +735,24 @@
         :selected-image-id="selectedFloorPlanImageId"
         :room="room"
         :selected-room-id="isRoomSelected ? room?.id ?? null : null"
+        :walls="wallList"
+        :selected-wall-id="selectedWall?.id ?? null"
+        :groups="objectGroups"
+        :selected-group-id="selectedGroup?.id ?? null"
         @close="showLayerPanel = false"
         @select="onLayerSelect"
         @select-image="onLayerSelectImage"
         @select-room="onLayerSelectRoom"
+        @select-wall="onLayerSelectWall"
+        @select-group="onLayerSelectGroup"
         @move-forward="onLayerMoveForward"
         @move-backward="onLayerMoveBackward"
         @bring-to-front="moveFurnitureToFront"
         @send-to-back="moveFurnitureToBack"
         @reorder="onLayerReorder"
         @reorder-unified="onLayerReorderUnified"
+        @create-group="onCreateGroup"
+        @ungroup="onUngroup"
       />
     </div>
 
@@ -808,8 +982,11 @@ import { useHistory } from "~/composables/useHistory";
 import { createMeasurement, getMeasurementMidpoint, formatDistance, type Measurement, type Point } from "~/utils/measureTool";
 import { loadFloorPlanImageFromFile, type FloorPlanImage } from "~/utils/floorPlanImage";
 import { getNextZIndex, sortByZIndex, bringToFront, sendToBack, bringForward, sendBackward, reorderToPosition } from "~/utils/layerOrder";
+import { createWallFromDrag, snapToAngle, snapToExistingWall, getWallRenderRect, getWallLength, joinWalls, findConnectedWallChains, wallsToPolygon, type Wall, type WallPolygon, WALL_COLORS } from "~/utils/wall";
+import { createGroup, getWallBounds, mergeBoundingBoxes, type ObjectGroup, type GroupMember, type BoundingBox } from "~/utils/group";
 import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
 import DoorEditForm from "~/components/editor/DoorEditForm.vue";
+import WallEditForm from "~/components/editor/WallEditForm.vue";
 import LayerPanel from "~/components/editor/LayerPanel.vue";
 import type { Furniture, FurnitureShape, LShapeDirection } from "~/types/furniture";
 
@@ -845,6 +1022,84 @@ const scale = computed(() => {
   }
   return DEFAULT_SCALE;
 });
+
+// 벽체 렌더링 config
+const getWallRenderConfig = (wall: Wall) => {
+  const rect = getWallRenderRect(wall, scale.value);
+  const isSelected = selectedWall.value?.id === wall.id;
+  const isMulti = isMultiSelected(wall.id, 'wall');
+
+  // 색상 결정: 다중 선택 > 단일 선택 > 기본
+  let fillColor = wall.color || WALL_COLORS.interior;
+  let strokeColor = '#374151';
+  let strokeWidth = 1;
+
+  if (isMulti) {
+    strokeColor = '#22c55e';
+    strokeWidth = 3;
+  } else if (isSelected) {
+    fillColor = '#3b82f6';
+    strokeColor = '#1d4ed8';
+    strokeWidth = 2;
+  }
+
+  return {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    rotation: rect.rotation,
+    fill: fillColor,
+    stroke: strokeColor,
+    strokeWidth: strokeWidth,
+    dash: isMulti ? [8, 4] : undefined,
+    offsetX: 0,
+    offsetY: rect.height / 2,
+  };
+};
+
+// 벽체 길이 텍스트 config
+const getWallLengthTextConfig = (wall: Wall) => {
+  const length = getWallLength(wall);
+  const midX = ((wall.startX + wall.endX) / 2) * scale.value;
+  const midY = ((wall.startY + wall.endY) / 2) * scale.value;
+  const angle = Math.atan2(wall.endY - wall.startY, wall.endX - wall.startX);
+  const offsetY = -20; // 벽체 위로 텍스트 표시
+
+  return {
+    x: midX + Math.sin(angle) * offsetY,
+    y: midY - Math.cos(angle) * offsetY,
+    text: `${Math.round(length)}cm`,
+    fontSize: 12,
+    fill: '#374151',
+    align: 'center',
+    offsetX: 20,
+  };
+};
+
+// 폴리곤 렌더링 config
+const getPolygonRenderConfig = (polygon: WallPolygon) => {
+  const s = scale.value;
+
+  // 내곽선 점들을 역순으로 정렬 (외곽선과 연결하기 위해)
+  const reversedInner: number[] = [];
+  for (let i = polygon.innerPoints.length - 2; i >= 0; i -= 2) {
+    reversedInner.push(polygon.innerPoints[i]! * s, polygon.innerPoints[i + 1]! * s);
+  }
+
+  // 외곽선 + 역순 내곽선을 합쳐서 닫힌 폴리곤 생성
+  const outerScaled = polygon.outerPoints.map(p => p * s);
+  const points = [...outerScaled, ...reversedInner];
+
+  return {
+    points,
+    stroke: polygon.color,
+    strokeWidth: 1,
+    closed: true,
+    fill: polygon.color,
+    opacity: 0.8,
+  };
+};
 
 // L자형 가구 config 생성
 const getLShapeConfig = (furniture: Furniture) => {
@@ -1098,7 +1353,7 @@ const onLShapeHandleDragV = (furniture: Furniture, e: any) => {
 
 const containerRef = ref<HTMLElement | null>(null);
 const stageRef = ref<any>(null);
-const furnitureLayerRef = ref<any>(null);
+const objectLayerRef = ref<any>(null);
 const transformerRef = ref<any>(null);
 const furnitureRefs = ref<Map<string, any>>(new Map());
 const roomRectRef = ref<any>(null);
@@ -1187,11 +1442,212 @@ watch(floorPlanImage, (newImage) => {
   }
 }, { immediate: true });
 
+// 벽체 상태
+const wallList = ref<Wall[]>([]);
+const selectedWall = ref<Wall | null>(null);
+const isWallDrawMode = ref(false);
+const showPolygonView = ref(false); // 폴리곤 뷰 토글
+
+// 벽체 폴리곤 (연결된 벽체들을 폴리곤으로 변환)
+const wallPolygons = computed((): WallPolygon[] => {
+  if (!showPolygonView.value || wallList.value.length === 0) return [];
+
+  const chains = findConnectedWallChains(wallList.value);
+  const polygons: WallPolygon[] = [];
+
+  for (const chain of chains) {
+    const polygon = wallsToPolygon(chain);
+    if (polygon) {
+      polygons.push(polygon);
+    }
+  }
+
+  return polygons;
+});
+
+// 그룹 상태
+const objectGroups = ref<ObjectGroup[]>([]);
+const selectedGroup = ref<ObjectGroup | null>(null);
+
+// 그룹 선택 핸들러
+const onLayerSelectGroup = (group: ObjectGroup) => {
+  selectedGroup.value = group;
+  selectedFurniture.value = null;
+  selectedWall.value = null;
+  selectedDoor.value = null;
+  isRoomSelected.value = false;
+};
+
+// 그룹 생성 핸들러
+const onCreateGroup = (members: GroupMember[]) => {
+  const boundsList: BoundingBox[] = [];
+
+  for (const member of members) {
+    if (member.type === 'furniture') {
+      const furniture = furnitureList.value.find((f) => f.id === member.id);
+      if (furniture) {
+        // 로컬 getFurnitureBounds 사용
+        const b = getFurnitureBounds(furniture.x, furniture.y, furniture);
+        boundsList.push({
+          minX: b.left,
+          minY: b.top,
+          maxX: b.right,
+          maxY: b.bottom,
+          width: b.width,
+          height: b.height,
+          centerX: (b.left + b.right) / 2,
+          centerY: (b.top + b.bottom) / 2,
+        });
+      }
+    } else if (member.type === 'wall') {
+      const wall = wallList.value.find((w) => w.id === member.id);
+      if (wall) {
+        boundsList.push(getWallBounds(wall, scale.value));
+      }
+    }
+  }
+
+  const mergedBounds = mergeBoundingBoxes(boundsList);
+  if (!mergedBounds) return;
+
+  const maxZIndex = Math.max(
+    ...objectGroups.value.map((g) => g.zIndex),
+    ...furnitureList.value.map((f) => f.zIndex),
+    ...wallList.value.map((w) => w.zIndex),
+    0
+  );
+
+  const newGroup = createGroup(members, mergedBounds, {
+    zIndex: maxZIndex + 1,
+  });
+
+  objectGroups.value.push(newGroup);
+  selectedGroup.value = newGroup;
+  saveToHistory();
+};
+
+// 그룹 해제 핸들러
+const onUngroup = (groupId: string) => {
+  const index = objectGroups.value.findIndex((g) => g.id === groupId);
+  if (index !== -1) {
+    objectGroups.value.splice(index, 1);
+    if (selectedGroup.value?.id === groupId) {
+      selectedGroup.value = null;
+    }
+    saveToHistory();
+  }
+};
+
+// 그룹 클릭 핸들러
+const onGroupClick = (group: ObjectGroup, e: any) => {
+  e.evt?.stopPropagation?.();
+  selectedGroup.value = group;
+  selectedFurniture.value = null;
+  selectedWall.value = null;
+  selectedDoor.value = null;
+  isRoomSelected.value = false;
+};
+
+// 그룹 드래그 시작
+let groupDragStartX = 0;
+let groupDragStartY = 0;
+const onGroupDragStart = (e: any, group: ObjectGroup) => {
+  groupDragStartX = group.x;
+  groupDragStartY = group.y;
+};
+
+// 그룹 드래그 종료 (그룹 멤버들 함께 이동)
+const onGroupDragEnd = (e: any, group: ObjectGroup) => {
+  const newX = e.target.x();
+  const newY = e.target.y();
+  const dx = newX - groupDragStartX;
+  const dy = newY - groupDragStartY;
+
+  // 그룹 위치 업데이트
+  group.x = newX;
+  group.y = newY;
+
+  // 그룹 멤버들도 함께 이동
+  for (const member of group.members) {
+    if (member.type === 'furniture') {
+      const furniture = furnitureList.value.find((f) => f.id === member.id);
+      if (furniture) {
+        furniture.x += dx;
+        furniture.y += dy;
+      }
+    } else if (member.type === 'wall') {
+      const wall = wallList.value.find((w) => w.id === member.id);
+      if (wall) {
+        wall.startX += dx / scale.value;
+        wall.startY += dy / scale.value;
+        wall.endX += dx / scale.value;
+        wall.endY += dy / scale.value;
+      }
+    }
+  }
+
+  saveToHistory();
+};
+
+// 다중 선택 상태 (Ctrl+클릭으로 선택)
+interface SelectedItem {
+  id: string;
+  type: 'furniture' | 'door' | 'wall';
+}
+const multiSelectedItems = ref<SelectedItem[]>([]);
+
+// 다중 선택 토글 함수
+const toggleMultiSelect = (id: string, type: 'furniture' | 'door' | 'wall') => {
+  const index = multiSelectedItems.value.findIndex(
+    (item) => item.id === id && item.type === type
+  );
+  if (index !== -1) {
+    // 이미 선택된 경우 제거
+    multiSelectedItems.value.splice(index, 1);
+  } else {
+    // 선택되지 않은 경우 추가
+    multiSelectedItems.value.push({ id, type });
+  }
+};
+
+// 다중 선택 초기화
+const clearMultiSelect = () => {
+  multiSelectedItems.value = [];
+};
+
+// 아이템이 다중 선택에 포함되어 있는지 확인
+const isMultiSelected = (id: string, type: 'furniture' | 'door' | 'wall') => {
+  return multiSelectedItems.value.some(
+    (item) => item.id === id && item.type === type
+  );
+};
+
+// 그룹 드래그 상태
+interface GroupDragState {
+  startX: number;
+  startY: number;
+  items: Array<{
+    id: string;
+    type: 'furniture' | 'door' | 'wall';
+    originalX: number;
+    originalY: number;
+    // 벽체용 추가 좌표
+    originalEndX?: number;
+    originalEndY?: number;
+  }>;
+}
+const groupDragState = ref<GroupDragState | null>(null);
+
+const wallDrawStart = ref<{ x: number; y: number } | null>(null);
+const wallDrawPreview = ref<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+const showWallEditForm = ref(false);
+
 // 히스토리 (Undo/Redo)
 interface HistoryState {
   room: Room | null;
   furnitureList: Furniture[];
   doorList: Door[];
+  wallList: Wall[];
 }
 
 const history = useHistory<HistoryState>({ maxHistory: 50 });
@@ -1204,6 +1660,7 @@ const saveToHistory = () => {
     room: room.value,
     furnitureList: furnitureList.value,
     doorList: doorList.value,
+    wallList: wallList.value,
   });
 };
 
@@ -1215,8 +1672,10 @@ const undo = () => {
     room.value = state.room;
     furnitureList.value = state.furnitureList;
     doorList.value = state.doorList;
+    wallList.value = state.wallList || [];
     selectedFurniture.value = null;
     selectedDoor.value = null;
+    selectedWall.value = null;
     nextTick(() => {
       isRestoringHistory.value = false;
     });
@@ -1231,8 +1690,10 @@ const redo = () => {
     room.value = state.room;
     furnitureList.value = state.furnitureList;
     doorList.value = state.doorList;
+    wallList.value = state.wallList || [];
     selectedFurniture.value = null;
     selectedDoor.value = null;
+    selectedWall.value = null;
     nextTick(() => {
       isRestoringHistory.value = false;
     });
@@ -1505,6 +1966,23 @@ const onMouseDown = (e: any) => {
     return;
   }
 
+  // 벽체 그리기 모드에서는 드래그 시작
+  if (isWallDrawMode.value) {
+    const stage = e.target.getStage();
+    const pointer = stage.getPointerPosition();
+    const worldX = (pointer.x - stageConfig.value.x) / stageConfig.value.scaleX;
+    const worldY = (pointer.y - stageConfig.value.y) / stageConfig.value.scaleY;
+
+    // 기존 벽체 끝점에 스냅
+    const snapped = snapToExistingWall(worldX / scale.value, worldY / scale.value, wallList.value);
+    if (snapped.snapped) {
+      wallDrawStart.value = { x: snapped.x * scale.value, y: snapped.y * scale.value };
+    } else {
+      wallDrawStart.value = { x: worldX, y: worldY };
+    }
+    return;
+  }
+
   if (e.target === e.target.getStage()) {
     isPanning.value = true;
     const pos = e.target.getStage().getPointerPosition();
@@ -1512,6 +1990,7 @@ const onMouseDown = (e: any) => {
     // 빈 공간 클릭 시 선택 및 편집 폼 해제
     selectedFurniture.value = null;
     selectedDoor.value = null;
+    selectedWall.value = null;
     isRoomSelected.value = false;
     showEditForm.value = false;
     showRoomEditForm.value = false;
@@ -1527,12 +2006,20 @@ const onRoomMouseDown = (e: any) => {
     return;
   }
 
+  // 벽체 그리기 모드일 때는 이벤트 전파 허용 (스테이지에서 벽체 그리기 처리)
+  if (isWallDrawMode.value) {
+    return;
+  }
+
   // 방 클릭 시 패닝 시작하지 않음 (방 선택만 함)
   e.cancelBubble = true;
 };
 
 // 방 클릭 시 선택 및 편집 폼 해제
 const onRoomClick = () => {
+  // 벽체 그리기 모드일 때는 방 선택 무시
+  if (isWallDrawMode.value) return;
+
   selectedFurniture.value = null;
   selectedDoor.value = null;
   showEditForm.value = false;
@@ -1624,6 +2111,41 @@ const onMouseMove = (e: any) => {
     handleMeasureMouseMove(e);
   }
 
+  // 벽체 그리기 모드에서 드래그 중이면 프리뷰 업데이트
+  if (isWallDrawMode.value && wallDrawStart.value) {
+    const stage = e.target.getStage();
+    const pointer = stage.getPointerPosition();
+    let worldX = (pointer.x - stageConfig.value.x) / stageConfig.value.scaleX;
+    let worldY = (pointer.y - stageConfig.value.y) / stageConfig.value.scaleY;
+
+    // Shift 키로 각도 스냅
+    if (e.evt?.shiftKey) {
+      const snapped = snapToAngle(
+        wallDrawStart.value.x / scale.value,
+        wallDrawStart.value.y / scale.value,
+        worldX / scale.value,
+        worldY / scale.value
+      );
+      worldX = snapped.endX * scale.value;
+      worldY = snapped.endY * scale.value;
+    }
+
+    // 기존 벽체 끝점에 스냅
+    const snapped = snapToExistingWall(worldX / scale.value, worldY / scale.value, wallList.value);
+    if (snapped.snapped) {
+      worldX = snapped.x * scale.value;
+      worldY = snapped.y * scale.value;
+    }
+
+    wallDrawPreview.value = {
+      startX: wallDrawStart.value.x,
+      startY: wallDrawStart.value.y,
+      endX: worldX,
+      endY: worldY,
+    };
+    return;
+  }
+
   if (!isPanning.value) return;
 
   const pos = e.target.getStage().getPointerPosition();
@@ -1635,7 +2157,40 @@ const onMouseMove = (e: any) => {
   lastPointerPos.value = { x: pos.x, y: pos.y };
 };
 
-const onMouseUp = () => {
+const onMouseUp = (e: any) => {
+  // 벽체 그리기 완료
+  if (isWallDrawMode.value && wallDrawStart.value && wallDrawPreview.value) {
+    const startX = wallDrawStart.value.x / scale.value;
+    const startY = wallDrawStart.value.y / scale.value;
+    let endX = wallDrawPreview.value.endX / scale.value;
+    let endY = wallDrawPreview.value.endY / scale.value;
+
+    // Shift 키로 각도 스냅
+    if (e?.evt?.shiftKey) {
+      const snapped = snapToAngle(startX, startY, endX, endY);
+      endX = snapped.endX;
+      endY = snapped.endY;
+    }
+
+    // 벽체 생성 (최소 길이 확인은 createWallFromDrag에서)
+    const wall = createWallFromDrag(
+      wallDrawStart.value.x,
+      wallDrawStart.value.y,
+      wallDrawPreview.value.endX,
+      wallDrawPreview.value.endY,
+      scale.value
+    );
+
+    if (wall) {
+      wallList.value.push(wall);
+      saveToHistory();
+    }
+
+    wallDrawStart.value = null;
+    wallDrawPreview.value = null;
+    return;
+  }
+
   isPanning.value = false;
 };
 
@@ -1972,6 +2527,62 @@ const leftTopToCenter = (x: number, y: number, furniture: Furniture) => {
   };
 };
 
+// 가구 드래그 시작 - 그룹 드래그 상태 초기화
+const onFurnitureDragStart = (furniture: Furniture, e: any) => {
+  const node = e.target;
+
+  // 다중 선택 상태이고 드래그 중인 아이템이 선택된 아이템 중 하나인 경우
+  if (multiSelectedItems.value.length > 0 && isMultiSelected(furniture.id, 'furniture')) {
+    // 그룹 드래그 상태 초기화
+    const items: GroupDragState['items'] = [];
+
+    for (const item of multiSelectedItems.value) {
+      if (item.type === 'furniture') {
+        const f = furnitureList.value.find((furn) => furn.id === item.id);
+        if (f) {
+          items.push({
+            id: f.id,
+            type: 'furniture',
+            originalX: f.x,
+            originalY: f.y,
+          });
+        }
+      } else if (item.type === 'door') {
+        const d = doorList.value.find((door) => door.id === item.id);
+        if (d) {
+          items.push({
+            id: d.id,
+            type: 'door',
+            originalX: d.x,
+            originalY: d.y,
+          });
+        }
+      } else if (item.type === 'wall') {
+        const w = wallList.value.find((wall) => wall.id === item.id);
+        if (w) {
+          items.push({
+            id: w.id,
+            type: 'wall',
+            originalX: w.startX,
+            originalY: w.startY,
+            originalEndX: w.endX,
+            originalEndY: w.endY,
+          });
+        }
+      }
+    }
+
+    const leftTop = centerToLeftTop(node.x(), node.y(), furniture);
+    groupDragState.value = {
+      startX: leftTop.x,
+      startY: leftTop.y,
+      items,
+    };
+  } else {
+    groupDragState.value = null;
+  }
+};
+
 // 가구 드래그 중 (스냅 적용) - 중심점 기준 회전에서 좌표 변환
 const onFurnitureDragMove = (furniture: Furniture, e: any) => {
   const node = e.target;
@@ -1985,6 +2596,39 @@ const onFurnitureDragMove = (furniture: Furniture, e: any) => {
   const center = leftTopToCenter(snapped.x, snapped.y, furniture);
   node.x(center.x);
   node.y(center.y);
+
+  // 그룹 드래그 중인 경우 다른 아이템들도 같이 이동
+  if (groupDragState.value) {
+    const dx = (leftTop.x - groupDragState.value.startX) / scale.value;
+    const dy = (leftTop.y - groupDragState.value.startY) / scale.value;
+
+    for (const item of groupDragState.value.items) {
+      // 드래그 중인 가구는 제외 (Konva가 이미 처리)
+      if (item.type === 'furniture' && item.id === furniture.id) continue;
+
+      if (item.type === 'furniture') {
+        const f = furnitureList.value.find((furn) => furn.id === item.id);
+        if (f) {
+          f.x = item.originalX + dx * scale.value;
+          f.y = item.originalY + dy * scale.value;
+        }
+      } else if (item.type === 'door') {
+        const d = doorList.value.find((door) => door.id === item.id);
+        if (d) {
+          d.x = item.originalX + dx;
+          d.y = item.originalY + dy;
+        }
+      } else if (item.type === 'wall') {
+        const w = wallList.value.find((wall) => wall.id === item.id);
+        if (w && item.originalEndX !== undefined && item.originalEndY !== undefined) {
+          w.startX = item.originalX + dx;
+          w.startY = item.originalY + dy;
+          w.endX = item.originalEndX + dx;
+          w.endY = item.originalEndY + dy;
+        }
+      }
+    }
+  }
 };
 
 // 가구 드래그 종료
@@ -1997,15 +2641,63 @@ const onFurnitureDragEnd = (furniture: Furniture, e: any) => {
   const snapped = snapToAll(leftTop.x, leftTop.y, furniture);
   furniture.x = snapped.x;
   furniture.y = snapped.y;
+
+  // 그룹 드래그 완료 시 다른 아이템들 최종 위치 반영
+  if (groupDragState.value) {
+    const dx = (leftTop.x - groupDragState.value.startX) / scale.value;
+    const dy = (leftTop.y - groupDragState.value.startY) / scale.value;
+
+    for (const item of groupDragState.value.items) {
+      if (item.type === 'furniture' && item.id === furniture.id) continue;
+
+      if (item.type === 'furniture') {
+        const f = furnitureList.value.find((furn) => furn.id === item.id);
+        if (f) {
+          f.x = item.originalX + dx * scale.value;
+          f.y = item.originalY + dy * scale.value;
+        }
+      } else if (item.type === 'door') {
+        const d = doorList.value.find((door) => door.id === item.id);
+        if (d) {
+          d.x = item.originalX + dx;
+          d.y = item.originalY + dy;
+        }
+      } else if (item.type === 'wall') {
+        const w = wallList.value.find((wall) => wall.id === item.id);
+        if (w && item.originalEndX !== undefined && item.originalEndY !== undefined) {
+          w.startX = item.originalX + dx;
+          w.startY = item.originalY + dy;
+          w.endX = item.originalEndX + dx;
+          w.endY = item.originalEndY + dy;
+        }
+      }
+    }
+    groupDragState.value = null;
+  }
+
   saveToHistory();
 };
 
-// 가구 선택 (클릭 - 선택만)
-const selectFurniture = (furniture: Furniture) => {
-  selectedFurniture.value = furniture;
-  selectedDoor.value = null;
-  isRoomSelected.value = false;
-  showEditForm.value = false;
+// 가구 선택 (클릭 - 선택만, Ctrl+클릭 시 다중 선택)
+const selectFurniture = (furniture: Furniture, e?: any) => {
+  const isCtrlPressed = e?.evt?.ctrlKey || e?.evt?.metaKey;
+
+  if (isCtrlPressed) {
+    // Ctrl+클릭: 다중 선택 토글
+    toggleMultiSelect(furniture.id, 'furniture');
+    // 기존 단일 선택 유지
+    if (!selectedFurniture.value) {
+      selectedFurniture.value = furniture;
+    }
+  } else {
+    // 일반 클릭: 단일 선택
+    clearMultiSelect();
+    selectedFurniture.value = furniture;
+    selectedDoor.value = null;
+    selectedWall.value = null;
+    isRoomSelected.value = false;
+    showEditForm.value = false;
+  }
   updateTransformer();
 };
 
@@ -2227,12 +2919,26 @@ const getDoorPanelConfig = (door: Door) => {
   };
 };
 
-// 문 선택 (클릭 - 선택만)
-const selectDoor = (door: Door) => {
-  selectedDoor.value = door;
-  selectedFurniture.value = null;
-  isRoomSelected.value = false;
-  showEditForm.value = false;
+// 문 선택 (클릭 - 선택만, Ctrl+클릭 시 다중 선택)
+const selectDoor = (door: Door, e?: any) => {
+  const isCtrlPressed = e?.evt?.ctrlKey || e?.evt?.metaKey;
+
+  if (isCtrlPressed) {
+    // Ctrl+클릭: 다중 선택 토글
+    toggleMultiSelect(door.id, 'door');
+    // 기존 단일 선택 유지
+    if (!selectedDoor.value) {
+      selectedDoor.value = door;
+    }
+  } else {
+    // 일반 클릭: 단일 선택
+    clearMultiSelect();
+    selectedDoor.value = door;
+    selectedFurniture.value = null;
+    selectedWall.value = null;
+    isRoomSelected.value = false;
+    showEditForm.value = false;
+  }
 };
 
 // 문 편집 폼 열기 (더블클릭)
@@ -2288,7 +2994,7 @@ const deleteFurniture = () => {
 // Konva 레이어의 children을 zIndex 순서대로 정렬
 const reorderFurnitureLayer = () => {
   nextTick(() => {
-    const layer = furnitureLayerRef.value?.getNode();
+    const layer = objectLayerRef.value?.getNode();
     if (!layer) return;
 
     // zIndex 기준으로 노드 순서 재정렬 (낮은 것부터 moveToTop하여 높은 것이 맨 위로)
@@ -2357,6 +3063,7 @@ const onLayerSelect = (item: Furniture) => {
   selectedDoor.value = null;
   isRoomSelected.value = false;
   selectedFloorPlanImageId.value = null;
+  selectedWall.value = null;
 };
 
 const onLayerSelectImage = (image: FloorPlanImage) => {
@@ -2364,12 +3071,22 @@ const onLayerSelectImage = (image: FloorPlanImage) => {
   selectedFurniture.value = null;
   selectedDoor.value = null;
   isRoomSelected.value = false;
+  selectedWall.value = null;
 };
 
 const onLayerSelectRoom = (_room: Room) => {
   isRoomSelected.value = true;
   selectedFurniture.value = null;
   selectedDoor.value = null;
+  selectedFloorPlanImageId.value = null;
+  selectedWall.value = null;
+};
+
+const onLayerSelectWall = (wall: Wall) => {
+  selectedWall.value = wall;
+  selectedFurniture.value = null;
+  selectedDoor.value = null;
+  isRoomSelected.value = false;
   selectedFloorPlanImageId.value = null;
 };
 
@@ -2394,16 +3111,21 @@ const onLayerReorder = (fromId: string, toIndex: number) => {
   saveToHistory();
 };
 
-// 통합 레이어 순서 변경 (가구 + 이미지 + 방)
-const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image' | 'room', toIndex: number) => {
+// 통합 레이어 순서 변경 (가구 + 이미지 + 방 + 그룹)
+const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image' | 'room' | 'wall' | 'group', toIndex: number) => {
   // 통합 레이어 목록 생성 (zIndex 내림차순)
   interface UnifiedItem {
     id: string;
-    type: 'furniture' | 'image' | 'room';
+    type: 'furniture' | 'image' | 'room' | 'wall' | 'group';
     zIndex: number;
   }
 
   const allItems: UnifiedItem[] = [];
+
+  // 그룹 추가
+  for (const g of objectGroups.value) {
+    allItems.push({ id: g.id, type: 'group', zIndex: g.zIndex });
+  }
 
   // 가구 추가
   for (const f of furnitureList.value) {
@@ -2418,6 +3140,11 @@ const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image' |
   // 방 추가
   if (room.value) {
     allItems.push({ id: room.value.id, type: 'room', zIndex: room.value.zIndex });
+  }
+
+  // 벽체 추가
+  for (const w of wallList.value) {
+    allItems.push({ id: w.id, type: 'wall', zIndex: w.zIndex });
   }
 
   // zIndex 내림차순 정렬
@@ -2437,7 +3164,12 @@ const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image' |
   const maxZIndex = newOrder.length - 1;
   newOrder.forEach((item, index) => {
     const newZIndex = maxZIndex - index;
-    if (item.type === 'furniture') {
+    if (item.type === 'group') {
+      const group = objectGroups.value.find(g => g.id === item.id);
+      if (group) {
+        group.zIndex = newZIndex;
+      }
+    } else if (item.type === 'furniture') {
       const furniture = furnitureList.value.find(f => f.id === item.id);
       if (furniture) {
         furniture.zIndex = newZIndex;
@@ -2446,6 +3178,11 @@ const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image' |
       floorPlanImage.value.zIndex = newZIndex;
     } else if (item.type === 'room' && room.value) {
       room.value.zIndex = newZIndex;
+    } else if (item.type === 'wall') {
+      const wall = wallList.value.find(w => w.id === item.id);
+      if (wall) {
+        wall.zIndex = newZIndex;
+      }
     }
   });
 
@@ -2466,7 +3203,398 @@ const toggleMeasureMode = () => {
     selectedFurniture.value = null;
     selectedDoor.value = null;
     showEditForm.value = false;
+    // 벽체 그리기 모드 끄기
+    isWallDrawMode.value = false;
+    wallDrawStart.value = null;
+    wallDrawPreview.value = null;
   }
+};
+
+// 벽체 그리기 모드 토글
+const toggleWallDrawMode = () => {
+  isWallDrawMode.value = !isWallDrawMode.value;
+  if (!isWallDrawMode.value) {
+    wallDrawStart.value = null;
+    wallDrawPreview.value = null;
+  }
+  // 벽체 그리기 모드 시작시 선택 해제
+  if (isWallDrawMode.value) {
+    selectedFurniture.value = null;
+    selectedDoor.value = null;
+    selectedWall.value = null;
+    showEditForm.value = false;
+    // 측정 모드 끄기
+    isMeasureMode.value = false;
+    measureStartPoint.value = null;
+    measureCurrentPoint.value = null;
+  }
+};
+
+// 벽체 삭제
+const deleteWall = () => {
+  if (!selectedWall.value) return;
+  wallList.value = wallList.value.filter((w) => w.id !== selectedWall.value?.id);
+  selectedWall.value = null;
+  showWallEditForm.value = false;
+  saveToHistory();
+};
+
+// 벽체 선택 (클릭 - 선택만, Ctrl+클릭 시 다중 선택)
+const onWallClick = (wall: Wall, e?: any) => {
+  const isCtrlPressed = e?.evt?.ctrlKey || e?.evt?.metaKey;
+
+  if (isCtrlPressed) {
+    // Ctrl+클릭: 다중 선택 토글
+    toggleMultiSelect(wall.id, 'wall');
+    // 기존 단일 선택 유지
+    if (!selectedWall.value) {
+      selectedWall.value = wall;
+    }
+  } else {
+    // 일반 클릭: 단일 선택
+    clearMultiSelect();
+    selectedFurniture.value = null;
+    selectedDoor.value = null;
+    isRoomSelected.value = false;
+    selectedWall.value = wall;
+    showEditForm.value = false;
+  }
+};
+
+// 벽체 드래그 시작 위치 저장
+const wallDragStartPos = ref<{ x: number; y: number } | null>(null);
+
+// 벽체 드래그 시작
+const onWallDragStart = (e: any, wall: Wall) => {
+  const node = e.target;
+  wallDragStartPos.value = { x: node.x(), y: node.y() };
+
+  // 다중 선택 상태이고 드래그 중인 벽체가 선택된 아이템 중 하나인 경우
+  if (multiSelectedItems.value.length > 0 && isMultiSelected(wall.id, 'wall')) {
+    const items: GroupDragState['items'] = [];
+
+    for (const item of multiSelectedItems.value) {
+      if (item.type === 'furniture') {
+        const f = furnitureList.value.find((furn) => furn.id === item.id);
+        if (f) {
+          items.push({
+            id: f.id,
+            type: 'furniture',
+            originalX: f.x,
+            originalY: f.y,
+          });
+        }
+      } else if (item.type === 'door') {
+        const d = doorList.value.find((door) => door.id === item.id);
+        if (d) {
+          items.push({
+            id: d.id,
+            type: 'door',
+            originalX: d.x,
+            originalY: d.y,
+          });
+        }
+      } else if (item.type === 'wall') {
+        const w = wallList.value.find((w2) => w2.id === item.id);
+        if (w) {
+          items.push({
+            id: w.id,
+            type: 'wall',
+            originalX: w.startX,
+            originalY: w.startY,
+            originalEndX: w.endX,
+            originalEndY: w.endY,
+          });
+        }
+      }
+    }
+
+    groupDragState.value = {
+      startX: node.x(),
+      startY: node.y(),
+      items,
+    };
+  } else {
+    groupDragState.value = null;
+  }
+};
+
+// 벽체 드래그 종료 - 위치 업데이트
+const onWallDragEnd = (e: any, wall: Wall) => {
+  if (!wallDragStartPos.value) return;
+
+  const node = e.target;
+  const newX = node.x();
+  const newY = node.y();
+
+  // 렌더링 좌표에서 이동량 계산 (픽셀 단위)
+  const dx = newX - wallDragStartPos.value.x;
+  const dy = newY - wallDragStartPos.value.y;
+
+  // cm 단위로 변환
+  const dxCm = dx / scale.value;
+  const dyCm = dy / scale.value;
+
+  // 벽체 시작점/끝점 업데이트
+  const index = wallList.value.findIndex((w) => w.id === wall.id);
+  if (index !== -1) {
+    const targetWall = wallList.value[index];
+    if (targetWall) {
+      const updatedWall: Wall = {
+        ...targetWall,
+        startX: targetWall.startX + dxCm,
+        startY: targetWall.startY + dyCm,
+        endX: targetWall.endX + dxCm,
+        endY: targetWall.endY + dyCm,
+      };
+      wallList.value[index] = updatedWall;
+      selectedWall.value = updatedWall;
+    }
+  }
+
+  // 그룹 드래그 완료 시 다른 아이템들 최종 위치 반영
+  if (groupDragState.value) {
+    for (const item of groupDragState.value.items) {
+      // 드래그 중인 벽체는 이미 위에서 처리
+      if (item.type === 'wall' && item.id === wall.id) continue;
+
+      if (item.type === 'furniture') {
+        const f = furnitureList.value.find((furn) => furn.id === item.id);
+        if (f) {
+          f.x = item.originalX + dxCm * scale.value;
+          f.y = item.originalY + dyCm * scale.value;
+        }
+      } else if (item.type === 'door') {
+        const d = doorList.value.find((door) => door.id === item.id);
+        if (d) {
+          d.x = item.originalX + dxCm;
+          d.y = item.originalY + dyCm;
+        }
+      } else if (item.type === 'wall') {
+        const w = wallList.value.find((w2) => w2.id === item.id);
+        if (w && item.originalEndX !== undefined && item.originalEndY !== undefined) {
+          w.startX = item.originalX + dxCm;
+          w.startY = item.originalY + dyCm;
+          w.endX = item.originalEndX + dxCm;
+          w.endY = item.originalEndY + dyCm;
+        }
+      }
+    }
+    groupDragState.value = null;
+  }
+
+  wallDragStartPos.value = null;
+  saveToHistory();
+};
+
+// 벽체 더블클릭 - 편집 폼 열기
+const openWallEditForm = (wall: Wall) => {
+  selectedWall.value = wall;
+  showWallEditForm.value = true;
+  showEditForm.value = false;
+};
+
+// 벽체 편집 폼 닫기
+const closeWallEditForm = () => {
+  showWallEditForm.value = false;
+};
+
+// 벽체 끝점 드래그 중 - 실시간 업데이트
+const onWallEndpointDrag = (e: any, wall: Wall, endpoint: 'start' | 'end') => {
+  const node = e.target;
+  const newX = node.x() / scale.value;
+  const newY = node.y() / scale.value;
+
+  const index = wallList.value.findIndex((w) => w.id === wall.id);
+  if (index === -1) return;
+
+  const targetWall = wallList.value[index];
+  if (!targetWall) return;
+
+  // 끝점 위치 업데이트
+  if (endpoint === 'start') {
+    wallList.value[index] = {
+      ...targetWall,
+      startX: newX,
+      startY: newY,
+    };
+  } else {
+    wallList.value[index] = {
+      ...targetWall,
+      endX: newX,
+      endY: newY,
+    };
+  }
+
+  // 선택된 벽체도 업데이트
+  if (selectedWall.value?.id === wall.id) {
+    selectedWall.value = wallList.value[index] ?? null;
+  }
+};
+
+// 벽체 끝점 드래그 종료
+const onWallEndpointDragEnd = (e: any, wall: Wall, endpoint: 'start' | 'end') => {
+  const node = e.target;
+  let newX = node.x() / scale.value;
+  let newY = node.y() / scale.value;
+
+  // Shift 키가 눌려있으면 각도 스냅 적용
+  if (e.evt?.shiftKey) {
+    const otherX = endpoint === 'start' ? wall.endX : wall.startX;
+    const otherY = endpoint === 'start' ? wall.endY : wall.startY;
+    const snapped = snapToAngle(otherX, otherY, newX, newY);
+    newX = snapped.endX;
+    newY = snapped.endY;
+  }
+
+  // 기존 벽체 끝점에 스냅 (자신의 벽체 제외)
+  const otherWalls = wallList.value.filter((w) => w.id !== wall.id);
+  const snappedToWall = snapToExistingWall(newX, newY, otherWalls);
+  newX = snappedToWall.x;
+  newY = snappedToWall.y;
+
+  const index = wallList.value.findIndex((w) => w.id === wall.id);
+  if (index === -1) return;
+
+  const targetWall = wallList.value[index];
+  if (!targetWall) return;
+
+  // 끝점 위치 최종 업데이트
+  if (endpoint === 'start') {
+    wallList.value[index] = {
+      ...targetWall,
+      startX: newX,
+      startY: newY,
+    };
+  } else {
+    wallList.value[index] = {
+      ...targetWall,
+      endX: newX,
+      endY: newY,
+    };
+  }
+
+  // 선택된 벽체도 업데이트
+  if (selectedWall.value?.id === wall.id) {
+    selectedWall.value = wallList.value[index] ?? null;
+  }
+
+  // 핸들 위치 복원 (스냅된 좌표로)
+  node.x(newX * scale.value);
+  node.y(newY * scale.value);
+
+  saveToHistory();
+};
+
+// 벽체 속성 업데이트
+const onWallUpdate = (editData: { thickness: number; isExterior: boolean; color: string }) => {
+  if (!selectedWall.value) return;
+  const index = wallList.value.findIndex((w) => w.id === selectedWall.value?.id);
+  const targetWall = wallList.value[index];
+  if (index !== -1 && targetWall) {
+    const updatedWall: Wall = {
+      ...targetWall,
+      thickness: editData.thickness,
+      isExterior: editData.isExterior,
+      color: editData.color,
+    };
+    wallList.value[index] = updatedWall;
+    selectedWall.value = updatedWall;
+    saveToHistory();
+  }
+};
+
+// 벽체 끝점 연결 (스냅)
+const onWallMerge = (wallIds: string[]) => {
+  if (!selectedWall.value || wallIds.length === 0) return;
+
+  // 현재 선택된 벽체
+  const currentWall = selectedWall.value;
+  const currentStartX = currentWall.startX;
+  const currentStartY = currentWall.startY;
+  const currentEndX = currentWall.endX;
+  const currentEndY = currentWall.endY;
+
+  // 선택된 벽체들을 현재 벽체 끝점에 스냅 (L자 연결 유지)
+  for (const wallId of wallIds) {
+    const wallIndex = wallList.value.findIndex((w) => w.id === wallId);
+    if (wallIndex === -1) continue;
+
+    const wall = wallList.value[wallIndex];
+    if (!wall) continue;
+
+    // 거리 계산 함수
+    const distance = (x1: number, y1: number, x2: number, y2: number) =>
+      Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
+
+    // 현재 벽체의 끝점과 대상 벽체의 끝점 거리 계산
+    const distances = [
+      { currentPoint: 'end', wallPoint: 'start', dist: distance(currentEndX, currentEndY, wall.startX, wall.startY) },
+      { currentPoint: 'end', wallPoint: 'end', dist: distance(currentEndX, currentEndY, wall.endX, wall.endY) },
+      { currentPoint: 'start', wallPoint: 'start', dist: distance(currentStartX, currentStartY, wall.startX, wall.startY) },
+      { currentPoint: 'start', wallPoint: 'end', dist: distance(currentStartX, currentStartY, wall.endX, wall.endY) },
+    ];
+
+    // 가장 가까운 연결점 찾기
+    const closest = distances.reduce((min, curr) => curr.dist < min.dist ? curr : min);
+
+    // 스냅 좌표 결정
+    const snapX = closest.currentPoint === 'end' ? currentEndX : currentStartX;
+    const snapY = closest.currentPoint === 'end' ? currentEndY : currentStartY;
+
+    // 대상 벽체의 해당 끝점을 스냅 좌표로 이동
+    const updatedWall: Wall = { ...wall };
+    if (closest.wallPoint === 'start') {
+      updatedWall.startX = snapX;
+      updatedWall.startY = snapY;
+    } else {
+      updatedWall.endX = snapX;
+      updatedWall.endY = snapY;
+    }
+
+    wallList.value[wallIndex] = updatedWall;
+  }
+
+  showWallEditForm.value = false;
+  saveToHistory();
+};
+
+// 벽체 결합 (Join) - 선택된 벽체들을 하나로 합침
+const onWallJoin = (wallIds: string[]) => {
+  if (!selectedWall.value || wallIds.length === 0) return;
+
+  const currentWall = selectedWall.value;
+
+  // 선택된 벽체들 수집
+  const wallsToJoin: Wall[] = [];
+  for (const wallId of wallIds) {
+    const wall = wallList.value.find((w) => w.id === wallId);
+    if (wall) {
+      wallsToJoin.push(wall);
+    }
+  }
+
+  if (wallsToJoin.length === 0) return;
+
+  // 유틸리티 함수로 결합 수행 (동일 선상 체크 없이 무조건 결합)
+  const result = joinWalls(currentWall, wallsToJoin, { checkCollinear: false });
+
+  if (!result.joinedWall) {
+    return;
+  }
+
+  // 기존 벽체들 제거
+  wallList.value = wallList.value.filter((w) => !result.removedWallIds.includes(w.id));
+
+  // 현재 벽체를 결합된 벽체로 업데이트
+  const currentIndex = wallList.value.findIndex((w) => w.id === currentWall.id);
+  if (currentIndex !== -1) {
+    wallList.value[currentIndex] = result.joinedWall;
+    selectedWall.value = result.joinedWall;
+  }
+
+  showWallEditForm.value = false;
+  saveToHistory();
 };
 
 // 측정 초기화
@@ -2621,19 +3749,26 @@ const onKeyDown = (e: KeyboardEvent) => {
     saveToHistory();
   }
 
-  // Escape로 측정 모드 종료, 편집 폼 닫기 또는 선택 해제
+  // Escape로 측정 모드 종료, 벽체 모드 종료, 편집 폼 닫기 또는 선택 해제
   if (e.key === "Escape") {
     if (isMeasureMode.value) {
       isMeasureMode.value = false;
       measureStartPoint.value = null;
       measureCurrentPoint.value = null;
+    } else if (isWallDrawMode.value) {
+      isWallDrawMode.value = false;
+      wallDrawStart.value = null;
+      wallDrawPreview.value = null;
     } else if (showEditForm.value) {
       showEditForm.value = false;
+    } else if (showWallEditForm.value) {
+      showWallEditForm.value = false;
     } else if (showRoomEditForm.value) {
       closeRoomEditForm();
     } else {
       selectedFurniture.value = null;
       selectedDoor.value = null;
+      selectedWall.value = null;
       isRoomSelected.value = false;
     }
   }
@@ -2643,9 +3778,24 @@ const onKeyDown = (e: KeyboardEvent) => {
     toggleMeasureMode();
   }
 
+  // W키로 벽체 그리기 모드 토글
+  if (e.key === "w" && !showEditForm.value) {
+    toggleWallDrawMode();
+  }
+
+  // 벽체 삭제
+  if (e.key === "Delete" && selectedWall.value) {
+    deleteWall();
+  }
+
   // L키로 레이어 패널 토글
   if (e.key === "l" && !showEditForm.value) {
     showLayerPanel.value = !showLayerPanel.value;
+  }
+
+  // P키로 폴리곤 뷰 토글
+  if (e.key === "p" && !showEditForm.value) {
+    showPolygonView.value = !showPolygonView.value;
   }
 
   // 문 삭제
@@ -2671,6 +3821,8 @@ const onKeyDown = (e: KeyboardEvent) => {
       showEditForm.value = true;
     } else if (selectedDoor.value && !showEditForm.value) {
       showEditForm.value = true;
+    } else if (selectedWall.value && !showWallEditForm.value) {
+      showWallEditForm.value = true;
     } else if (isRoomSelected.value && !showRoomEditForm.value) {
       openRoomEditForm();
     }
@@ -2767,6 +3919,47 @@ const onKeyDown = (e: KeyboardEvent) => {
       }
     }
   }
+
+  // 화살표 키로 벽체 이동
+  if (selectedWall.value) {
+    const w = selectedWall.value;
+    let dx = 0;
+    let dy = 0;
+
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      dx = -MOVE_STEP;
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      dx = MOVE_STEP;
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      dy = -MOVE_STEP;
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      dy = MOVE_STEP;
+    }
+
+    if (dx !== 0 || dy !== 0) {
+      // 벽체 시작점과 끝점 모두 이동
+      const index = wallList.value.findIndex((wall) => wall.id === w.id);
+      if (index !== -1) {
+        const targetWall = wallList.value[index];
+        if (targetWall) {
+          const updatedWall: Wall = {
+            ...targetWall,
+            startX: targetWall.startX + dx,
+            startY: targetWall.startY + dy,
+            endX: targetWall.endX + dx,
+            endY: targetWall.endY + dy,
+          };
+          wallList.value[index] = updatedWall;
+          selectedWall.value = updatedWall;
+          saveToHistory();
+        }
+      }
+    }
+  }
 };
 
 // 컨테이너 리사이즈 핸들링
@@ -2798,6 +3991,8 @@ const saveToLocalStorage = () => {
     room: room.value,
     furnitureList: furnitureList.value,
     doorList: doorList.value,
+    wallList: wallList.value,
+    floorPlanImage: floorPlanImage.value,
   });
 };
 
@@ -2828,8 +4023,11 @@ const loadFromLocalStorage = () => {
     }
     furnitureList.value = data.furnitureList || [];
     doorList.value = data.doorList || [];
+    wallList.value = data.wallList || [];
+    floorPlanImage.value = data.floorPlanImage || null;
     selectedFurniture.value = null;
     selectedDoor.value = null;
+    selectedWall.value = null;
     nextTick(() => {
       resetViewToRoom();
       reorderFurnitureLayer();
@@ -2845,6 +4043,8 @@ const exportJson = () => {
     room: room.value,
     furnitureList: furnitureList.value,
     doorList: doorList.value,
+    wallList: wallList.value,
+    floorPlanImage: floorPlanImage.value,
   });
 };
 

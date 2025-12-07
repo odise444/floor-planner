@@ -1,5 +1,7 @@
 import type { Furniture } from '~/types/furniture'
 import type { Door } from '~/utils/objectEdit'
+import type { Wall } from '~/utils/wall'
+import type { FloorPlanImage } from '~/utils/floorPlanImage'
 
 // 방 타입
 export interface Room {
@@ -20,11 +22,13 @@ export interface FloorPlanData {
   room: Room | null
   furnitureList: Furniture[]
   doorList: Door[]
+  wallList?: Wall[]
+  floorPlanImage?: FloorPlanImage | null
   savedAt: string
 }
 
 const STORAGE_KEY = 'floor-plan-data'
-const CURRENT_VERSION = '1.0'
+const CURRENT_VERSION = '1.1'
 
 // 평면도 데이터 저장
 export function saveFloorPlan(data: Omit<FloorPlanData, 'version' | 'savedAt'>): void {
