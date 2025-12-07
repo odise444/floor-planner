@@ -13,6 +13,7 @@
       @mousedown="onMouseDown"
       @mousemove="onMouseMove"
       @mouseup="onMouseUp"
+      @click="onStageClick"
     >
       <!-- 평면도 이미지 레이어 (배경) -->
       <v-layer :config="{ listening: true }">
@@ -1508,6 +1509,8 @@ const onUngroup = (groupId: string) => {
 
 // 그룹 클릭 핸들러
 const onGroupClick = (group: ObjectGroup, e: any) => {
+  // 드래그 상태 해제
+  isPanning.value = false;
   e.evt?.stopPropagation?.();
   selectedGroup.value = group;
   selectedFurniture.value = null;
@@ -1956,6 +1959,7 @@ const onMouseDown = (e: any) => {
     return;
   }
 
+  // 스테이지 직접 클릭 시에만 패닝 및 선택 해제
   if (e.target === e.target.getStage()) {
     isPanning.value = true;
     const pos = e.target.getStage().getPointerPosition();
@@ -1991,6 +1995,9 @@ const onRoomMouseDown = (e: any) => {
 
 // 방 클릭 시 선택 및 편집 폼 해제
 const onRoomClick = () => {
+  // 드래그 상태 해제
+  isPanning.value = false;
+
   // 벽체 그리기 모드일 때는 방 선택 무시
   if (isWallDrawMode.value) return;
 
@@ -2167,6 +2174,21 @@ const onMouseUp = (e: any) => {
   }
 
   isPanning.value = false;
+};
+
+// 스테이지 클릭 (빈 공간 클릭 시 선택 해제)
+const onStageClick = (e: any) => {
+  // 스테이지 자체를 클릭한 경우에만 선택 해제
+  if (e.target === e.target.getStage()) {
+    selectedFurniture.value = null;
+    selectedDoor.value = null;
+    selectedWall.value = null;
+    selectedGroup.value = null;
+    isRoomSelected.value = false;
+    showEditForm.value = false;
+    showRoomEditForm.value = false;
+    updateTransformer();
+  }
 };
 
 // 방 생성
@@ -2655,6 +2677,9 @@ const onFurnitureDragEnd = (furniture: Furniture, e: any) => {
 
 // 가구 선택 (클릭 - 선택만, Ctrl+클릭 시 다중 선택)
 const selectFurniture = (furniture: Furniture, e?: any) => {
+  // 드래그 상태 해제
+  isPanning.value = false;
+
   const isCtrlPressed = e?.evt?.ctrlKey || e?.evt?.metaKey;
 
   if (isCtrlPressed) {
@@ -2897,6 +2922,9 @@ const getDoorPanelConfig = (door: Door) => {
 
 // 문 선택 (클릭 - 선택만, Ctrl+클릭 시 다중 선택)
 const selectDoor = (door: Door, e?: any) => {
+  // 드래그 상태 해제
+  isPanning.value = false;
+
   const isCtrlPressed = e?.evt?.ctrlKey || e?.evt?.metaKey;
 
   if (isCtrlPressed) {
@@ -3036,14 +3064,17 @@ const moveFurnitureBackward = () => {
 
 // 레이어 패널 이벤트 핸들러
 const onLayerSelect = (item: Furniture) => {
+  isPanning.value = false;
   selectedFurniture.value = item;
   selectedDoor.value = null;
   isRoomSelected.value = false;
   selectedFloorPlanImageId.value = null;
   selectedWall.value = null;
+  selectedGroup.value = null;
 };
 
 const onLayerSelectImage = (image: FloorPlanImage) => {
+  isPanning.value = false;
   selectedFloorPlanImageId.value = image.id;
   selectedFurniture.value = null;
   selectedDoor.value = null;
@@ -3053,6 +3084,7 @@ const onLayerSelectImage = (image: FloorPlanImage) => {
 };
 
 const onLayerSelectRoom = (_room: Room) => {
+  isPanning.value = false;
   isRoomSelected.value = true;
   selectedFurniture.value = null;
   selectedDoor.value = null;
@@ -3062,6 +3094,7 @@ const onLayerSelectRoom = (_room: Room) => {
 };
 
 const onLayerSelectWall = (wall: Wall) => {
+  isPanning.value = false;
   selectedWall.value = wall;
   selectedFurniture.value = null;
   selectedDoor.value = null;
@@ -3239,6 +3272,9 @@ const deleteWall = () => {
 
 // 벽체 선택 (클릭 - 선택만, Ctrl+클릭 시 다중 선택)
 const onWallClick = (wall: Wall, e?: any) => {
+  // 드래그 상태 해제
+  isPanning.value = false;
+
   const isCtrlPressed = e?.evt?.ctrlKey || e?.evt?.metaKey;
 
   if (isCtrlPressed) {
