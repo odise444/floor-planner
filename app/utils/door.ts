@@ -1,9 +1,11 @@
 export interface Room {
+  id: string
   x: number
   y: number
   width: number
   height: number
   opacity: number
+  zIndex: number
 }
 
 export type WallType = 'top' | 'bottom' | 'left' | 'right'

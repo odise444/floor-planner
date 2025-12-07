@@ -3,11 +3,13 @@ import type { Door } from '~/utils/objectEdit'
 
 // 방 타입
 export interface Room {
+  id: string
   x: number
   y: number
   width: number
   height: number
   opacity: number
+  zIndex: number
 }
 
 // 평면도 데이터 타입

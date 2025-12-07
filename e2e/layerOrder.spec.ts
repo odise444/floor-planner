@@ -163,8 +163,9 @@ test.describe('레이어 정렬 기능', () => {
     const firstItemText = await items.first().textContent()
     expect(firstItemText).toContain('침대')
 
-    // 소파를 선택하고 맨 앞으로 이동
-    await items.last().click() // 소파 선택
+    // 소파를 선택하고 맨 앞으로 이동 (소파 텍스트 포함 항목 클릭)
+    const sofaItem = layerPanel.locator('.cursor-grab').filter({ hasText: '소파' })
+    await sofaItem.click()
     await page.waitForTimeout(200)
 
     // 맨 앞으로 버튼 클릭

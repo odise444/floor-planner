@@ -567,9 +567,12 @@
         :selected-id="selectedFurniture?.id ?? null"
         :image="floorPlanImage"
         :selected-image-id="selectedFloorPlanImageId"
+        :room="room"
+        :selected-room-id="isRoomSelected ? room?.id ?? null : null"
         @close="showLayerPanel = false"
         @select="onLayerSelect"
         @select-image="onLayerSelectImage"
+        @select-room="onLayerSelectRoom"
         @move-forward="onLayerMoveForward"
         @move-backward="onLayerMoveBackward"
         @bring-to-front="moveFurnitureToFront"
@@ -811,11 +814,13 @@ import LayerPanel from "~/components/editor/LayerPanel.vue";
 import type { Furniture, FurnitureShape, LShapeDirection } from "~/types/furniture";
 
 interface Room {
+  id: string;
   x: number;
   y: number;
   width: number;
   height: number;
   opacity: number;
+  zIndex: number;
 }
 
 interface Door {
@@ -1626,11 +1631,13 @@ const onMouseUp = () => {
 const createRoom = () => {
   const margin = 50; // 화면 가장자리 여백
   room.value = {
+    id: `room-${Date.now()}`,
     x: 0,
     y: 0,
     width: roomWidth.value * scale,
     height: roomHeight.value * scale,
     opacity: 1,
+    zIndex: -2, // 이미지(-1)보다 아래, 가장 아래 레이어
   };
   // 방의 왼쪽 상단이 화면 왼쪽 상단(여백 포함)에 오도록 뷰 위치 조정
   stageConfig.value.x = margin;
@@ -2345,6 +2352,13 @@ const onLayerSelectImage = (image: FloorPlanImage) => {
   isRoomSelected.value = false;
 };
 
+const onLayerSelectRoom = (_room: Room) => {
+  isRoomSelected.value = true;
+  selectedFurniture.value = null;
+  selectedDoor.value = null;
+  selectedFloorPlanImageId.value = null;
+};
+
 const onLayerMoveForward = (item: Furniture) => {
   furnitureList.value = bringForward(furnitureList.value, item.id);
   updateSelectedFurniture();
@@ -2366,12 +2380,12 @@ const onLayerReorder = (fromId: string, toIndex: number) => {
   saveToHistory();
 };
 
-// 통합 레이어 순서 변경 (가구 + 이미지)
-const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image', toIndex: number) => {
+// 통합 레이어 순서 변경 (가구 + 이미지 + 방)
+const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image' | 'room', toIndex: number) => {
   // 통합 레이어 목록 생성 (zIndex 내림차순)
   interface UnifiedItem {
     id: string;
-    type: 'furniture' | 'image';
+    type: 'furniture' | 'image' | 'room';
     zIndex: number;
   }
 
@@ -2385,6 +2399,11 @@ const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image', 
   // 이미지 추가
   if (floorPlanImage.value) {
     allItems.push({ id: floorPlanImage.value.id, type: 'image', zIndex: floorPlanImage.value.zIndex });
+  }
+
+  // 방 추가
+  if (room.value) {
+    allItems.push({ id: room.value.id, type: 'room', zIndex: room.value.zIndex });
   }
 
   // zIndex 내림차순 정렬
@@ -2411,6 +2430,8 @@ const onLayerReorderUnified = (fromId: string, fromType: 'furniture' | 'image', 
       }
     } else if (item.type === 'image' && floorPlanImage.value) {
       floorPlanImage.value.zIndex = newZIndex;
+    } else if (item.type === 'room' && room.value) {
+      room.value.zIndex = newZIndex;
     }
   });
 
@@ -2781,7 +2802,16 @@ const resetViewToRoom = () => {
 const loadFromLocalStorage = () => {
   const data = loadFloorPlan();
   if (data) {
-    room.value = data.room;
+    // 이전 버전 호환: id와 zIndex가 없는 room 데이터 처리
+    if (data.room) {
+      room.value = {
+        ...data.room,
+        id: data.room.id || `room-${Date.now()}`,
+        zIndex: data.room.zIndex ?? -2,
+      };
+    } else {
+      room.value = null;
+    }
     furnitureList.value = data.furnitureList || [];
     doorList.value = data.doorList || [];
     selectedFurniture.value = null;
