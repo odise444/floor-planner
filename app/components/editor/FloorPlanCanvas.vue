@@ -19,7 +19,24 @@
         <v-line v-for="line in gridLines" :key="line.id" :config="line" />
       </v-layer>
 
-      <!-- 방/벽 레이어 -->
+      <!-- 평면도 이미지 레이어 (맨 아래) -->
+      <v-layer>
+        <v-image
+          v-if="floorPlanImage && floorPlanImageElement"
+          :config="{
+            x: floorPlanImage.x,
+            y: floorPlanImage.y,
+            image: floorPlanImageElement,
+            width: floorPlanImage.width * floorPlanImage.scale,
+            height: floorPlanImage.height * floorPlanImage.scale,
+            opacity: floorPlanImage.opacity,
+            draggable: !floorPlanImage.locked,
+          }"
+          @dragend="onFloorPlanImageDragEnd"
+        />
+      </v-layer>
+
+      <!-- 방/벽 레이어 (이미지 위) -->
       <v-layer>
         <v-rect
           v-if="room"
@@ -122,23 +139,6 @@
             anchorFill: '#ffffff',
             boundBoxFunc: roomBoundBoxFunc,
           }"
-        />
-      </v-layer>
-
-      <!-- 평면도 이미지 레이어 (방 위에 표시) -->
-      <v-layer>
-        <v-image
-          v-if="floorPlanImage && floorPlanImageElement"
-          :config="{
-            x: floorPlanImage.x,
-            y: floorPlanImage.y,
-            image: floorPlanImageElement,
-            width: floorPlanImage.width * floorPlanImage.scale,
-            height: floorPlanImage.height * floorPlanImage.scale,
-            opacity: floorPlanImage.opacity,
-            draggable: !floorPlanImage.locked,
-          }"
-          @dragend="onFloorPlanImageDragEnd"
         />
       </v-layer>
 
@@ -1584,8 +1584,9 @@ const onRoomTransformEnd = (e: any) => {
 // 방 편집 폼 열기
 const openRoomEditForm = () => {
   if (!room.value) return;
-  editRoomWidth.value = Math.round(room.value.width / scale.value);
-  editRoomHeight.value = Math.round(room.value.height / scale.value);
+  // widthCm이 있으면 그 값을, 없으면 현재 픽셀 크기를 표시 (처음 설정 시)
+  editRoomWidth.value = room.value.widthCm ?? Math.round(room.value.width);
+  editRoomHeight.value = room.value.heightCm ?? Math.round(room.value.height);
   editRoomOpacity.value = room.value.opacity;
   roomEditError.value = "";
   showRoomEditForm.value = true;
@@ -1598,7 +1599,7 @@ const closeRoomEditForm = () => {
   roomEditError.value = "";
 };
 
-// 방 크기 업데이트
+// 방 크기 업데이트 (cm 값만 저장, 픽셀 크기는 유지)
 const updateRoomSize = () => {
   if (!room.value) return;
 
@@ -1608,8 +1609,9 @@ const updateRoomSize = () => {
     return;
   }
 
-  room.value.width = editRoomWidth.value * scale.value;
-  room.value.height = editRoomHeight.value * scale.value;
+  // cm 값만 저장 (픽셀 크기는 변경하지 않음 - 사용자가 드래그로 조절)
+  room.value.widthCm = editRoomWidth.value;
+  room.value.heightCm = editRoomHeight.value;
   room.value.opacity = editRoomOpacity.value;
   roomEditError.value = "";
   showRoomEditForm.value = false;
