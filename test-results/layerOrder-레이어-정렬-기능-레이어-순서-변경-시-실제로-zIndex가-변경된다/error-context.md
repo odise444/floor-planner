@@ -1,0 +1,178 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "이사할 때" [level=1] [ref=e5]
+      - generic [ref=e6]:
+        - button "새로 만들기" [ref=e7] [cursor=pointer]
+        - button "저장" [ref=e8] [cursor=pointer]
+        - button "불러오기" [ref=e9] [cursor=pointer]
+        - button "내보내기" [ref=e11] [cursor=pointer]:
+          - text: 내보내기
+          - img [ref=e12]
+    - generic [ref=e15]:
+      - navigation [ref=e16]:
+        - generic [ref=e17]:
+          - button [ref=e18] [cursor=pointer]:
+            - img [ref=e20]
+          - button [ref=e22] [cursor=pointer]:
+            - img [ref=e23]
+          - button [ref=e25] [cursor=pointer]:
+            - img [ref=e26]
+        - button [ref=e29] [cursor=pointer]:
+          - img [ref=e30]
+      - complementary [ref=e33]:
+        - generic [ref=e34]:
+          - heading "가구 라이브러리" [level=2] [ref=e36]
+          - generic [ref=e38]:
+            - generic [ref=e40] [cursor=pointer]:
+              - generic [ref=e41]: 🚪
+              - generic [ref=e42]:
+                - generic [ref=e43]: 문 추가
+                - generic [ref=e44]: 벽에 문 배치
+            - generic [ref=e46] [cursor=pointer]:
+              - generic [ref=e47]: +
+              - generic [ref=e48]:
+                - generic [ref=e49]: 내 가구 추가
+                - generic [ref=e50]: 크기 직접 입력
+            - generic [ref=e51]: 기본 가구
+            - generic [ref=e53] [cursor=pointer]:
+              - generic [ref=e54]: 소
+              - generic [ref=e55]:
+                - generic [ref=e56]: 소파
+                - generic [ref=e57]: 200 × 90 cm
+            - generic [ref=e59] [cursor=pointer]:
+              - generic [ref=e60]: 싱
+              - generic [ref=e61]:
+                - generic [ref=e62]: 싱글 침대
+                - generic [ref=e63]: 100 × 200 cm
+            - generic [ref=e65] [cursor=pointer]:
+              - generic [ref=e66]: 더
+              - generic [ref=e67]:
+                - generic [ref=e68]: 더블 침대
+                - generic [ref=e69]: 150 × 200 cm
+            - generic [ref=e71] [cursor=pointer]:
+              - generic [ref=e72]: 식
+              - generic [ref=e73]:
+                - generic [ref=e74]: 식탁
+                - generic [ref=e75]: 140 × 80 cm
+            - generic [ref=e77] [cursor=pointer]:
+              - generic [ref=e78]: 책
+              - generic [ref=e79]:
+                - generic [ref=e80]: 책상
+                - generic [ref=e81]: 120 × 60 cm
+            - generic [ref=e83] [cursor=pointer]:
+              - generic [ref=e84]: 옷
+              - generic [ref=e85]:
+                - generic [ref=e86]: 옷장
+                - generic [ref=e87]: 120 × 60 cm
+            - generic [ref=e89] [cursor=pointer]:
+              - generic [ref=e90]: T
+              - generic [ref=e91]:
+                - generic [ref=e92]: TV 스탠드
+                - generic [ref=e93]: 150 × 40 cm
+            - generic [ref=e95] [cursor=pointer]:
+              - generic [ref=e96]: 책
+              - generic [ref=e97]:
+                - generic [ref=e98]: 책장
+                - generic [ref=e99]: 80 × 30 cm
+            - generic [ref=e101] [cursor=pointer]:
+              - generic [ref=e102]: 원
+              - generic [ref=e103]:
+                - generic [ref=e104]: 원형 테이블
+                - generic [ref=e105]: 100 × 100 cm (원형)
+            - generic [ref=e107] [cursor=pointer]:
+              - generic [ref=e108]: 원
+              - generic [ref=e109]:
+                - generic [ref=e110]: 원형 스툴
+                - generic [ref=e111]: 40 × 40 cm (원형)
+            - generic [ref=e113] [cursor=pointer]:
+              - generic [ref=e114]: 푸
+              - generic [ref=e115]:
+                - generic [ref=e116]: 푸프
+                - generic [ref=e117]: 50 × 50 cm (원형)
+            - generic [ref=e119] [cursor=pointer]:
+              - generic [ref=e120]: 타
+              - generic [ref=e121]:
+                - generic [ref=e122]: 타원형 테이블
+                - generic [ref=e123]: 160 × 90 cm (타원형)
+            - generic [ref=e125] [cursor=pointer]:
+              - generic [ref=e126]: 욕
+              - generic [ref=e127]:
+                - generic [ref=e128]: 욕조
+                - generic [ref=e129]: 170 × 80 cm (타원형)
+            - generic [ref=e131] [cursor=pointer]:
+              - generic [ref=e132]: 타
+              - generic [ref=e133]:
+                - generic [ref=e134]: 타원형 러그
+                - generic [ref=e135]: 200 × 150 cm (타원형)
+            - generic [ref=e137] [cursor=pointer]:
+              - generic [ref=e138]: L
+              - generic [ref=e139]:
+                - generic [ref=e140]: L자 소파
+                - generic [ref=e141]: 250 × 200 cm (L자형)
+            - generic [ref=e143] [cursor=pointer]:
+              - generic [ref=e144]: L
+              - generic [ref=e145]:
+                - generic [ref=e146]: L자 책상
+                - generic [ref=e147]: 180 × 150 cm (L자형)
+            - generic [ref=e149] [cursor=pointer]:
+              - generic [ref=e150]: L
+              - generic [ref=e151]:
+                - generic [ref=e152]: L자 카운터
+                - generic [ref=e153]: 200 × 180 cm (L자형)
+            - generic [ref=e155] [cursor=pointer]:
+              - generic [ref=e156]: 의
+              - generic [ref=e157]:
+                - generic [ref=e158]: 의자
+                - generic [ref=e159]: 45 × 45 cm
+            - generic [ref=e161] [cursor=pointer]:
+              - generic [ref=e162]: 커
+              - generic [ref=e163]:
+                - generic [ref=e164]: 커피 테이블
+                - generic [ref=e165]: 100 × 50 cm
+      - generic [ref=e166]:
+        - generic [ref=e171]:
+          - button "벽체 그리기 (W)" [ref=e172] [cursor=pointer]:
+            - img [ref=e173]
+          - button "폴리곤 뷰 (P)" [ref=e175] [cursor=pointer]:
+            - img [ref=e176]
+          - button "측정 도구 (M)" [ref=e178] [cursor=pointer]:
+            - img [ref=e179]
+          - button "+" [ref=e181] [cursor=pointer]
+          - button "-" [ref=e182] [cursor=pointer]
+          - button "실행 취소 (Ctrl+Z)" [ref=e183] [cursor=pointer]:
+            - img [ref=e184]
+          - button "다시 실행 (Ctrl+Y)" [disabled] [ref=e186]:
+            - img [ref=e187]
+          - button "평면도 이미지 업로드" [ref=e189] [cursor=pointer]:
+            - img [ref=e190]
+        - generic [ref=e193]:
+          - generic [ref=e194]: "레이어:"
+          - button "맨 뒤로 (Ctrl+[)" [ref=e195] [cursor=pointer]:
+            - img [ref=e196]
+          - button "한 단계 뒤로 ([)" [ref=e198] [cursor=pointer]:
+            - img [ref=e199]
+          - button "한 단계 앞으로 (])" [ref=e201] [cursor=pointer]:
+            - img [ref=e202]
+          - button "맨 앞으로 (Ctrl+])" [ref=e204] [cursor=pointer]:
+            - img [ref=e205]
+  - generic:
+    - img
+  - generic:
+    - generic:
+      - generic:
+        - button "Go to parent" [disabled]
+        - button "Open in editor"
+        - button "Close"
+  - generic [ref=e207]:
+    - button "Toggle Nuxt DevTools" [ref=e208] [cursor=pointer]:
+      - img [ref=e209]
+    - generic "Page load time" [ref=e212]:
+      - generic [ref=e213]: "102"
+      - generic [ref=e214]: ms
+    - button "Toggle Component Inspector" [ref=e216] [cursor=pointer]:
+      - img [ref=e217]
+```
