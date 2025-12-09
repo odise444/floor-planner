@@ -37,28 +37,24 @@
       />
 
       <!-- 히스토리 패널 -->
-      <template v-else-if="activePanel === 'history'">
-        <div class="p-4 border-b border-gray-200">
-          <h2 class="font-medium text-gray-700">히스토리</h2>
-        </div>
-        <div class="flex-1 overflow-y-auto p-4">
-          <div class="text-sm text-gray-500">
-            히스토리 기능 준비 중...
-          </div>
-        </div>
-      </template>
+      <PanelHistoryPanel
+        v-else-if="activePanel === 'history'"
+        :can-undo="canvasRef?.history?.canUndo?.value || false"
+        :can-redo="canvasRef?.history?.canRedo?.value || false"
+        @undo="canvasRef?.undo?.()"
+        @redo="canvasRef?.redo?.()"
+      />
 
       <!-- 설정 패널 -->
-      <template v-else-if="activePanel === 'settings'">
-        <div class="p-4 border-b border-gray-200">
-          <h2 class="font-medium text-gray-700">설정</h2>
-        </div>
-        <div class="flex-1 overflow-y-auto p-4">
-          <div class="text-sm text-gray-500">
-            설정 기능 준비 중...
-          </div>
-        </div>
-      </template>
+      <PanelSettingsPanel
+        v-else-if="activePanel === 'settings'"
+        :show-grid="showGrid"
+        :snap-to-grid="snapToGrid"
+        :grid-size="gridSize"
+        @update:show-grid="showGrid = $event"
+        @update:snap-to-grid="snapToGrid = $event"
+        @update:grid-size="gridSize = $event"
+      />
     </aside>
 
     <!-- 캔버스 -->
@@ -76,6 +72,11 @@ import type { ObjectGroup, GroupMember } from '~/utils/group'
 
 const canvasRef = ref<any>(null)
 const activePanel = ref<PanelId>('furniture')
+
+// 설정 상태
+const showGrid = ref(true)
+const snapToGrid = ref(true)
+const gridSize = ref(20)
 
 // 전역 상태로 캔버스 참조 공유
 const globalCanvasRef = useState<any>('canvasRef', () => null)
