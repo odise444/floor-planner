@@ -3394,8 +3394,35 @@ const onKeyDown = (e: KeyboardEvent) => {
     }
   }
 
-  // 화살표 키로 가구 이동 (충돌 감지 적용)
-  const MOVE_STEP = e.shiftKey ? 10 : 1; // Shift 누르면 10cm, 아니면 1cm
+  // 화살표 키로 오브젝트 이동 (Shift: 10cm, 기본: 1cm)
+  const MOVE_STEP = e.shiftKey ? 10 : 1;
+
+  // 방 이동 (픽셀 단위, 가구와 동일)
+  if (isRoomSelected.value && room.value) {
+    const r = room.value;
+    const oldX = r.x;
+    const oldY = r.y;
+
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      r.x -= MOVE_STEP * scale.value;
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      r.x += MOVE_STEP * scale.value;
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      r.y -= MOVE_STEP * scale.value;
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      r.y += MOVE_STEP * scale.value;
+    }
+
+    if (r.x !== oldX || r.y !== oldY) {
+      saveToHistory();
+    }
+  }
+
+  // 가구 이동 (충돌 감지 적용)
   if (selectedFurniture.value) {
     const f = selectedFurniture.value;
     let newX = f.x;
@@ -3417,15 +3444,20 @@ const onKeyDown = (e: KeyboardEvent) => {
 
     // 충돌이 없을 때만 이동
     if (canMoveFurniture(f, newX, newY)) {
-      f.x = newX;
-      f.y = newY;
+      if (f.x !== newX || f.y !== newY) {
+        f.x = newX;
+        f.y = newY;
+        saveToHistory();
+      }
     }
   }
 
-  // 화살표 키로 문 이동 (벽 따라, 충돌 감지 적용)
+  // 문 이동 (벽 따라, 충돌 감지 적용)
   if (selectedDoor.value) {
     const d = selectedDoor.value;
     const isHorizontalWall = d.wall === "top" || d.wall === "bottom";
+    const oldX = d.x;
+    const oldY = d.y;
 
     if (isHorizontalWall) {
       if (e.key === "ArrowLeft") {
@@ -3462,9 +3494,13 @@ const onKeyDown = (e: KeyboardEvent) => {
         }
       }
     }
+
+    if (d.x !== oldX || d.y !== oldY) {
+      saveToHistory();
+    }
   }
 
-  // 화살표 키로 벽체 이동
+  // 벽체 이동
   if (selectedWall.value) {
     const w = selectedWall.value;
     let dx = 0;
