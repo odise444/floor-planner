@@ -2,6 +2,8 @@ import type { Furniture } from './furniture'
 import type { Room } from './room'
 import type { Door } from './door'
 import type { Wall } from '~/utils/wall'
+import type { Rect } from 'konva/lib/shapes/Rect'
+import type { Group } from 'konva/lib/Group'
 
 // 선택 가능한 객체 타입
 export type SelectableType = 'furniture' | 'door' | 'wall' | 'room' | 'image' | 'group'
@@ -52,3 +54,27 @@ export type ToolType = 'select' | 'room' | 'wall' | 'door' | 'furniture' | 'meas
 
 // 에디터 모드 타입
 export type ModeType = 'normal' | 'draw' | 'measure'
+
+// 레이어 컴포넌트 인스턴스 타입
+
+/** vue-konva 컴포넌트 ref 타입 (getNode 메서드로 Konva 노드에 접근) */
+export interface KonvaComponentRef<T> {
+  getNode: () => T
+}
+
+/**
+ * RoomLayer 컴포넌트 인스턴스 타입
+ * Transformer 연결을 위해 roomRectRef를 노출
+ */
+export interface RoomLayerInstance {
+  roomRectRef: KonvaComponentRef<Rect> | null
+}
+
+/**
+ * FurnitureLayer 컴포넌트 인스턴스 타입
+ * Transformer 연결을 위해 개별 가구 ref 맵을 노출
+ */
+export interface FurnitureLayerInstance {
+  furnitureRefs: Map<string, KonvaComponentRef<Group>>
+  setFurnitureRef: (id: string, el: KonvaComponentRef<Group> | null) => void
+}

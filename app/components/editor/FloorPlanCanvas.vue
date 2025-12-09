@@ -34,106 +34,29 @@
 
       <!-- 객체 레이어 (방/문/벽체/가구) -->
       <v-layer ref="objectLayerRef">
-        <v-rect
-          v-if="room"
-          ref="roomRectRef"
-          :config="{
-            x: room.x,
-            y: room.y,
-            width: room.width,
-            height: room.height,
-            fill: '#ffffff',
-            stroke: isRoomSelected ? '#3b82f6' : '#374151',
-            strokeWidth: isRoomSelected ? 4 : 3,
-            opacity: room.opacity,
-            name: 'room',
-          }"
+        <!-- 방 레이어 -->
+        <CanvasRoomLayer
+          ref="roomLayerRef"
+          :room="room"
+          :scale="scale"
+          :is-selected="isRoomSelected"
           @mousedown="onRoomMouseDown"
           @click="onRoomClick"
           @dblclick="openRoomEditForm"
           @transformend="onRoomTransformEnd"
         />
-        <!-- 치수선 표시 -->
-        <template v-if="room">
-          <!-- 가로 치수 -->
-          <v-text
-            :config="{
-              x: room.x + room.width / 2,
-              y: room.y - 25,
-              text: `${Math.round(room.width / scale)}cm`,
-              fontSize: 14,
-              fill: '#374151',
-              align: 'center',
-              offsetX: 25,
-            }"
-          />
-          <!-- 세로 치수 -->
-          <v-text
-            :config="{
-              x: room.x - 25,
-              y: room.y + room.height / 2,
-              text: `${Math.round(room.height / scale)}cm`,
-              fontSize: 14,
-              fill: '#374151',
-              align: 'center',
-              rotation: -90,
-              offsetX: 25,
-            }"
-          />
-        </template>
 
-        <!-- 문 렌더링 -->
-        <v-group
-          v-for="door in doorList"
-          :key="door.id"
-          :config="getDoorGroupConfig(door)"
-          @click="(e: any) => selectDoor(door, e)"
-          @dblclick="openDoorEditForm(door)"
-          @dragend="onDoorDragEnd(door, $event)"
-        >
-          <!-- 문 프레임 (벽 끊김 표시) -->
-          <v-rect
-            :config="{
-              width: door.wall === 'top' || door.wall === 'bottom' ? door.width * scale : 10,
-              height: door.wall === 'left' || door.wall === 'right' ? door.width * scale : 10,
-              fill: '#ffffff',
-              stroke: isMultiSelected(door.id, 'door') ? '#22c55e' : (selectedDoor?.id === door.id ? '#3b82f6' : '#374151'),
-              strokeWidth: isMultiSelected(door.id, 'door') || selectedDoor?.id === door.id ? 2 : 1,
-            }"
-          />
-          <!-- 다중 선택 표시용 외곽선 -->
-          <v-rect
-            v-if="isMultiSelected(door.id, 'door')"
-            :config="{
-              x: -4,
-              y: -4,
-              width: (door.wall === 'top' || door.wall === 'bottom' ? door.width * scale : 10) + 8,
-              height: (door.wall === 'left' || door.wall === 'right' ? door.width * scale : 10) + 8,
-              stroke: '#22c55e',
-              strokeWidth: 2,
-              dash: [6, 3],
-              listening: false,
-            }"
-          />
-          <!-- 문 열림 호 (arc) -->
-          <v-arc
-            :config="getDoorArcConfig(door)"
-          />
-          <!-- 문 패널 -->
-          <v-line
-            :config="getDoorPanelConfig(door)"
-          />
-          <!-- 문 크기 표시 -->
-          <v-text
-            :config="{
-              text: `${door.width}`,
-              fontSize: 10,
-              fill: '#374151',
-              x: door.wall === 'top' || door.wall === 'bottom' ? (door.width * scale) / 2 - 10 : -15,
-              y: door.wall === 'left' || door.wall === 'right' ? (door.width * scale) / 2 - 5 : -15,
-            }"
-          />
-        </v-group>
+        <!-- 문 레이어 -->
+        <CanvasDoorLayer
+          :doors="doorList"
+          :room="room"
+          :scale="scale"
+          :selected-door-id="selectedDoor?.id || null"
+          :multi-selected-ids="multiSelectedDoorIds"
+          @select="selectDoor"
+          @dblclick="openDoorEditForm"
+          @dragend="onDoorDragEnd"
+        />
         <!-- 방 리사이즈 트랜스포머 -->
         <v-transformer
           v-if="isRoomSelected && room"
@@ -150,186 +73,36 @@
             boundBoxFunc: roomBoundBoxFunc,
           }"
         />
-        <!-- 폴리곤 뷰 (연결된 벽체를 폴리곤으로 렌더링) -->
-        <template v-if="showPolygonView">
-          <template v-for="polygon in wallPolygons" :key="polygon.id">
-            <!-- 벽체 폴리곤 (외곽선 + 내곽선을 하나의 닫힌 도형으로) -->
-            <v-line
-              :config="getPolygonRenderConfig(polygon)"
-            />
-          </template>
-        </template>
-
-        <!-- 기존 벽체들 (폴리곤 뷰가 아닐 때만) -->
-        <template v-if="!showPolygonView" v-for="wall in wallList" :key="wall.id">
-          <v-rect
-            :config="{
-              ...getWallRenderConfig(wall),
-              draggable: selectedWall?.id === wall.id && !isWallDrawMode,
-            }"
-            @click="(e: any) => onWallClick(wall, e)"
-            @dblclick="openWallEditForm(wall)"
-            @dragstart="(e: any) => onWallDragStart(e, wall)"
-            @dragend="(e: any) => onWallDragEnd(e, wall)"
-          />
-          <!-- 벽체 길이 표시 -->
-          <v-text
-            :config="getWallLengthTextConfig(wall)"
-          />
-          <!-- 선택된 벽체의 끝점 핸들 -->
-          <template v-if="selectedWall?.id === wall.id && !isWallDrawMode">
-            <!-- 시작점 핸들 -->
-            <v-circle
-              :config="{
-                x: wall.startX * scale,
-                y: wall.startY * scale,
-                radius: 8,
-                fill: '#3b82f6',
-                stroke: '#ffffff',
-                strokeWidth: 2,
-                draggable: true,
-                name: 'wall-handle-start',
-              }"
-              @dragmove="(e: any) => onWallEndpointDrag(e, wall, 'start')"
-              @dragend="(e: any) => onWallEndpointDragEnd(e, wall, 'start')"
-            />
-            <!-- 끝점 핸들 -->
-            <v-circle
-              :config="{
-                x: wall.endX * scale,
-                y: wall.endY * scale,
-                radius: 8,
-                fill: '#3b82f6',
-                stroke: '#ffffff',
-                strokeWidth: 2,
-                draggable: true,
-                name: 'wall-handle-end',
-              }"
-              @dragmove="(e: any) => onWallEndpointDrag(e, wall, 'end')"
-              @dragend="(e: any) => onWallEndpointDragEnd(e, wall, 'end')"
-            />
-          </template>
-        </template>
-        <!-- 벽체 그리기 프리뷰 -->
-        <v-line
-          v-if="wallDrawPreview"
-          :config="{
-            points: [wallDrawPreview.startX, wallDrawPreview.startY, wallDrawPreview.endX, wallDrawPreview.endY],
-            stroke: '#22c55e',
-            strokeWidth: 15 * scale,
-            lineCap: 'round',
-            dash: [10, 5],
-            opacity: 0.7,
-          }"
+        <!-- 벽체 레이어 -->
+        <CanvasWallLayer
+          :walls="wallList"
+          :scale="scale"
+          :selected-wall-id="selectedWall?.id || null"
+          :multi-selected-ids="multiSelectedWallIds"
+          :is-wall-draw-mode="isWallDrawMode"
+          :show-polygon-view="showPolygonView"
+          :wall-draw-preview="wallDrawPreview"
+          @click="onWallClick"
+          @dblclick="openWallEditForm"
+          @dragstart="onWallDragStart"
+          @dragend="onWallDragEnd"
+          @endpoint-drag="onWallEndpointDrag"
+          @endpoint-drag-end="onWallEndpointDragEnd"
         />
 
-        <!-- 가구들 -->
-        <v-group
-          v-for="furniture in furnitureList"
-          :key="furniture.id"
-          :ref="(el: any) => setFurnitureRef(furniture.id, el)"
-          :config="{
-            x: furniture.x + (furniture.width * scale) / 2,
-            y: furniture.y + (furniture.height * scale) / 2,
-            offsetX: (furniture.width * scale) / 2,
-            offsetY: (furniture.height * scale) / 2,
-            rotation: furniture.rotation,
-            draggable: true,
-            name: `furniture-${furniture.id}`,
-            zIndex: furniture.zIndex,
-          }"
-          @dragstart="(e: any) => onFurnitureDragStart(furniture, e)"
-          @dragmove="(e: any) => onFurnitureDragMove(furniture, e)"
-          @dragend="(e: any) => onFurnitureDragEnd(furniture, e)"
-          @click="(e: any) => selectFurniture(furniture, e)"
-          @dblclick="openFurnitureEditForm(furniture)"
-          @transformend="onFurnitureTransformEnd(furniture, $event)"
-        >
-          <!-- 다중 선택 표시용 배경 -->
-          <v-rect
-            v-if="isMultiSelected(furniture.id, 'furniture')"
-            :config="{
-              x: -4,
-              y: -4,
-              width: furniture.width * scale + 8,
-              height: furniture.height * scale + 8,
-              stroke: '#22c55e',
-              strokeWidth: 2,
-              dash: [6, 3],
-              cornerRadius: 6,
-              listening: false,
-            }"
-          />
-          <!-- 사각형 (기본) -->
-          <v-rect
-            v-if="!furniture.shape || furniture.shape === 'rect'"
-            :config="{
-              width: furniture.width * scale,
-              height: furniture.height * scale,
-              fill: furniture.color,
-              stroke: isMultiSelected(furniture.id, 'furniture') ? '#22c55e' : '#374151',
-              strokeWidth: isMultiSelected(furniture.id, 'furniture') ? 2 : 1,
-              cornerRadius: 4,
-            }"
-          />
-          <!-- 원형 -->
-          <v-circle
-            v-else-if="furniture.shape === 'circle'"
-            :config="{
-              x: (furniture.width * scale) / 2,
-              y: (furniture.height * scale) / 2,
-              radius: Math.min(furniture.width, furniture.height) * scale / 2,
-              fill: furniture.color,
-              stroke: isMultiSelected(furniture.id, 'furniture') ? '#22c55e' : '#374151',
-              strokeWidth: isMultiSelected(furniture.id, 'furniture') ? 2 : 1,
-            }"
-          />
-          <!-- 타원형 -->
-          <v-ellipse
-            v-else-if="furniture.shape === 'ellipse'"
-            :config="{
-              x: (furniture.width * scale) / 2,
-              y: (furniture.height * scale) / 2,
-              radiusX: (furniture.width * scale) / 2,
-              radiusY: (furniture.height * scale) / 2,
-              fill: furniture.color,
-              stroke: isMultiSelected(furniture.id, 'furniture') ? '#22c55e' : '#374151',
-              strokeWidth: isMultiSelected(furniture.id, 'furniture') ? 2 : 1,
-            }"
-          />
-          <!-- L자형 -->
-          <v-line
-            v-else-if="furniture.shape === 'l-shape'"
-            :config="getLShapeConfig(furniture)"
-          />
-          <!-- 가구 이름 -->
-          <v-text
-            :config="getFurnitureTextConfig(furniture)"
-          />
-          <!-- 가로 치수 (상단 내부 테두리) -->
-          <v-text
-            :config="{
-              text: `${furniture.width}cm`,
-              fontSize: 10,
-              fill: '#374151',
-              x: (furniture.width * scale) / 2,
-              y: 4,
-              offsetX: 15,
-            }"
-          />
-          <!-- 세로 치수 (좌측 내부 테두리) -->
-          <v-text
-            :config="{
-              text: `${furniture.height}cm`,
-              fontSize: 10,
-              fill: '#374151',
-              x: 4,
-              y: (furniture.height * scale) / 2,
-              rotation: -90,
-              offsetX: 15,
-            }"
-          />
-        </v-group>
+        <!-- 가구 레이어 -->
+        <CanvasFurnitureLayer
+          ref="furnitureLayerRef"
+          :furniture-list="furnitureList"
+          :scale="scale"
+          :multi-selected-ids="multiSelectedFurnitureIds"
+          @dragstart="onFurnitureDragStart"
+          @dragmove="onFurnitureDragMove"
+          @dragend="onFurnitureDragEnd"
+          @select="selectFurniture"
+          @dblclick="openFurnitureEditForm"
+          @transformend="onFurnitureTransformEnd"
+        />
         <!-- 리사이즈 트랜스포머 (항상 렌더링, nodes로 제어) -->
         <v-transformer
           ref="transformerRef"
@@ -358,152 +131,29 @@
           @dragmove="onLShapeHandleDragV(selectedFurniture!, $event)"
         />
 
-        <!-- 그룹 바운딩 박스 -->
-        <template v-for="group in objectGroups" :key="group.id">
-          <v-rect
-            :config="{
-              x: group.x,
-              y: group.y,
-              width: group.width,
-              height: group.height,
-              fill: 'transparent',
-              stroke: selectedGroup?.id === group.id ? '#8b5cf6' : group.color,
-              strokeWidth: selectedGroup?.id === group.id ? 3 : 2,
-              dash: [8, 4],
-              cornerRadius: 4,
-              draggable: !group.locked,
-              name: `group-${group.id}`,
-            }"
-            @click="(e: any) => onGroupClick(group, e)"
-            @dragstart="(e: any) => onGroupDragStart(e, group)"
-            @dragend="(e: any) => onGroupDragEnd(e, group)"
-          />
-          <!-- 그룹 라벨 -->
-          <v-text
-            :config="{
-              x: group.x,
-              y: group.y - 18,
-              text: group.name,
-              fontSize: 12,
-              fill: selectedGroup?.id === group.id ? '#8b5cf6' : group.color,
-              fontStyle: 'bold',
-            }"
-          />
-        </template>
+        <!-- 그룹 레이어 -->
+        <CanvasGroupLayer
+          :groups="objectGroups"
+          :selected-group-id="selectedGroup?.id || null"
+          @click="onGroupClick"
+          @dragstart="onGroupDragStart"
+          @dragend="onGroupDragEnd"
+        />
       </v-layer>
 
       <!-- 오버레이 레이어 (거리 표시 + 측정) -->
       <v-layer>
-        <!-- 벽/가구까지의 거리선 (selectedFurniture && room 조건은 distanceLines computed에서 처리) -->
-        <template v-for="dist in distanceLines" :key="dist.id">
-          <!-- 거리선 -->
-          <v-line
-            :config="{
-              points: dist.points,
-              stroke: dist.color,
-              strokeWidth: 1,
-              dash: [4, 4],
-            }"
-          />
-          <!-- 거리 텍스트 -->
-          <v-text
-            :config="{
-              text: `${dist.distance}cm`,
-              fontSize: 11,
-              fill: dist.color,
-              fontStyle: 'bold',
-              x: dist.textX,
-              y: dist.textY,
-              offsetX: dist.offsetX || 0,
-              offsetY: dist.offsetY || 0,
-            }"
-          />
-        </template>
-      <!-- 완료된 측정들 -->
-      <template v-for="m in measurements" :key="m.id">
-        <v-line
-          class="measurement-line"
-          :config="{
-            points: [m.start.x, m.start.y, m.end.x, m.end.y],
-            stroke: '#ef4444',
-            strokeWidth: 2,
-            dash: [6, 4],
-          }"
+        <!-- 거리선 레이어 -->
+        <CanvasDistanceLayer :distance-lines="distanceLines" />
+
+        <!-- 측정 레이어 -->
+        <CanvasMeasureLayer
+          :measurements="measurements"
+          :start-point="measureStartPoint"
+          :current-point="measureCurrentPoint"
+          :scale="scale"
         />
-        <!-- 시작점 -->
-        <v-circle
-          :config="{
-            x: m.start.x,
-            y: m.start.y,
-            radius: 4,
-            fill: '#ef4444',
-          }"
-        />
-        <!-- 끝점 -->
-        <v-circle
-          :config="{
-            x: m.end.x,
-            y: m.end.y,
-            radius: 4,
-            fill: '#ef4444',
-          }"
-        />
-        <!-- 거리 텍스트 -->
-        <v-text
-          :config="{
-            x: (m.start.x + m.end.x) / 2,
-            y: (m.start.y + m.end.y) / 2 - 12,
-            text: formatDistance(m.distance, scale),
-            fontSize: 14,
-            fontStyle: 'bold',
-            fill: '#ef4444',
-            offsetX: 20,
-          }"
-        />
-      </template>
-      <!-- 현재 측정 중인 선 (시작점이 설정되고 마우스 이동 중) -->
-      <template v-if="measureStartPoint && measureCurrentPoint">
-        <v-line
-          :config="{
-            points: [measureStartPoint.x, measureStartPoint.y, measureCurrentPoint.x, measureCurrentPoint.y],
-            stroke: '#f97316',
-            strokeWidth: 2,
-            dash: [6, 4],
-          }"
-        />
-        <!-- 시작점 -->
-        <v-circle
-          :config="{
-            x: measureStartPoint.x,
-            y: measureStartPoint.y,
-            radius: 4,
-            fill: '#f97316',
-          }"
-        />
-        <!-- 현재 점 -->
-        <v-circle
-          :config="{
-            x: measureCurrentPoint.x,
-            y: measureCurrentPoint.y,
-            radius: 4,
-            fill: '#f97316',
-          }"
-        />
-      </template>
-      <!-- 시작점만 설정된 경우 -->
-      <template v-else-if="measureStartPoint">
-        <v-circle
-          :config="{
-            x: measureStartPoint.x,
-            y: measureStartPoint.y,
-            radius: 5,
-            fill: '#f97316',
-            stroke: '#ffffff',
-            strokeWidth: 2,
-          }"
-        />
-      </template>
-    </v-layer>
+      </v-layer>
   </v-stage>
 
     <!-- 측정 모드 표시 -->
@@ -935,7 +585,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
-import { getDoorArcConfig as getDoorArcConfigUtil } from "~/utils/door";
 import { applyFurnitureEdit, applyDoorEdit, type FurnitureEditData, type DoorEditData } from "~/utils/objectEdit";
 import { saveFloorPlan, loadFloorPlan, exportToJson } from "~/utils/floorPlanStorage";
 import { useHistory } from "~/composables/useHistory";
@@ -948,6 +597,7 @@ import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
 import DoorEditForm from "~/components/editor/DoorEditForm.vue";
 import WallEditForm from "~/components/editor/WallEditForm.vue";
 import type { Furniture, FurnitureShape, LShapeDirection } from "~/types/furniture";
+import type { RoomLayerInstance, FurnitureLayerInstance } from "~/types/editor";
 
 interface Room {
   id: string;
@@ -1057,116 +707,6 @@ const getPolygonRenderConfig = (polygon: WallPolygon) => {
     closed: true,
     fill: polygon.color,
     opacity: 0.8,
-  };
-};
-
-// L자형 가구 config 생성
-const getLShapeConfig = (furniture: Furniture) => {
-  const w = furniture.width * scale.value;
-  const h = furniture.height * scale.value;
-  const ratioW = furniture.lShapeRatioW ?? furniture.lShapeRatio ?? 0.5;
-  const ratioH = furniture.lShapeRatioH ?? furniture.lShapeRatio ?? 0.5;
-  const direction = furniture.lShapeDirection || 'bottom-right';
-
-  // L자 모양의 점들 계산 (닫힌 다각형)
-  let points: number[] = [];
-  const cutW = w * ratioW;
-  const cutH = h * ratioH;
-
-  switch (direction) {
-    case 'bottom-right': // └ 모양 (왼쪽 위 잘림)
-      points = [0, cutH, cutW, cutH, cutW, 0, w, 0, w, h, 0, h];
-      break;
-    case 'bottom-left': // ┘ 모양 (오른쪽 위 잘림)
-      points = [0, 0, w - cutW, 0, w - cutW, cutH, w, cutH, w, h, 0, h];
-      break;
-    case 'top-right': // ┌ 모양 (왼쪽 아래 잘림)
-      points = [0, 0, w, 0, w, h - cutH, w - cutW, h - cutH, w - cutW, h, 0, h];
-      break;
-    case 'top-left': // ┐ 모양 (오른쪽 아래 잘림)
-      points = [0, 0, w, 0, w, h, cutW, h, cutW, h - cutH, 0, h - cutH];
-      break;
-  }
-
-  return {
-    points,
-    fill: furniture.color,
-    stroke: '#374151',
-    strokeWidth: 1,
-    closed: true,
-  };
-};
-
-// 가구 이름 텍스트 config
-const getFurnitureTextConfig = (furniture: Furniture) => {
-  const w = furniture.width * scale.value;
-  const h = furniture.height * scale.value;
-
-  // L자형이 아닌 경우 기본 중앙 정렬
-  if (furniture.shape !== 'l-shape') {
-    return {
-      text: furniture.name,
-      fontSize: 12,
-      fill: '#ffffff',
-      width: w,
-      height: h,
-      align: 'center',
-      verticalAlign: 'middle',
-      padding: 4,
-    };
-  }
-
-  // L자형: 넓은 영역에 텍스트 배치
-  const ratioW = furniture.lShapeRatioW ?? furniture.lShapeRatio ?? 0.5;
-  const ratioH = furniture.lShapeRatioH ?? furniture.lShapeRatio ?? 0.5;
-  const direction = furniture.lShapeDirection || 'bottom-right';
-  const cutW = w * ratioW;
-  const cutH = h * ratioH;
-
-  // L자형의 두 영역 중 더 넓은 곳 (하단 또는 우측 막대)
-  let textX = 0;
-  let textY = 0;
-  let textW = w;
-  let textH = h;
-
-  switch (direction) {
-    case 'bottom-right': // └ 모양 - 하단 막대가 넓음
-      textX = 0;
-      textY = cutH;
-      textW = w;
-      textH = h - cutH;
-      break;
-    case 'bottom-left': // ┘ 모양 - 하단 막대
-      textX = 0;
-      textY = cutH;
-      textW = w;
-      textH = h - cutH;
-      break;
-    case 'top-right': // ┌ 모양 - 상단 막대
-      textX = 0;
-      textY = 0;
-      textW = w;
-      textH = h - cutH;
-      break;
-    case 'top-left': // ┐ 모양 - 상단 막대
-      textX = 0;
-      textY = 0;
-      textW = w;
-      textH = h - cutH;
-      break;
-  }
-
-  return {
-    text: furniture.name,
-    fontSize: 12,
-    fill: '#ffffff',
-    x: textX,
-    y: textY,
-    width: textW,
-    height: textH,
-    align: 'center',
-    verticalAlign: 'middle',
-    padding: 4,
   };
 };
 
@@ -1314,16 +854,12 @@ const containerRef = ref<HTMLElement | null>(null);
 const stageRef = ref<any>(null);
 const objectLayerRef = ref<any>(null);
 const transformerRef = ref<any>(null);
-const furnitureRefs = ref<Map<string, any>>(new Map());
-const roomRectRef = ref<any>(null);
+const roomLayerRef = ref<RoomLayerInstance | null>(null);
+const furnitureLayerRef = ref<FurnitureLayerInstance | null>(null);
 
-// 가구 그룹 ref 설정
-const setFurnitureRef = (id: string, el: any) => {
-  if (el) {
-    furnitureRefs.value.set(id, el);
-  } else {
-    furnitureRefs.value.delete(id);
-  }
+// 가구 그룹 ref 가져오기 (FurnitureLayer에서 expose된 furnitureRefs 사용)
+const getFurnitureRefs = () => {
+  return furnitureLayerRef.value?.furnitureRefs || new Map();
 };
 
 const stageConfig = ref({
@@ -1597,6 +1133,25 @@ const isMultiSelected = (id: string, type: 'furniture' | 'door' | 'wall') => {
     (item) => item.id === id && item.type === type
   );
 };
+
+// 타입별 다중 선택 ID 목록 (레이어 컴포넌트용)
+const multiSelectedFurnitureIds = computed(() =>
+  multiSelectedItems.value
+    .filter((item) => item.type === 'furniture')
+    .map((item) => item.id)
+);
+
+const multiSelectedDoorIds = computed(() =>
+  multiSelectedItems.value
+    .filter((item) => item.type === 'door')
+    .map((item) => item.id)
+);
+
+const multiSelectedWallIds = computed(() =>
+  multiSelectedItems.value
+    .filter((item) => item.type === 'wall')
+    .map((item) => item.id)
+);
 
 // 그룹 드래그 상태
 interface GroupDragState {
@@ -2010,9 +1565,9 @@ const onRoomClick = () => {
 
   // 다음 틱에서 Room Transformer 연결
   nextTick(() => {
-    if (roomTransformerRef.value && roomRectRef.value) {
+    if (roomTransformerRef.value && roomLayerRef.value?.roomRectRef) {
       const transformer = roomTransformerRef.value.getNode();
-      const roomNode = roomRectRef.value.getNode();
+      const roomNode = roomLayerRef.value.roomRectRef.getNode();
       transformer.nodes([roomNode]);
       transformer.getLayer()?.batchDraw();
     }
@@ -2730,7 +2285,7 @@ const updateTransformer = () => {
       return;
     }
 
-    const furnitureGroup = furnitureRefs.value.get(selectedFurniture.value.id);
+    const furnitureGroup = getFurnitureRefs().get(selectedFurniture.value.id);
 
     if (furnitureGroup) {
       const node = furnitureGroup.getNode ? furnitureGroup.getNode() : furnitureGroup;
@@ -2879,47 +2434,6 @@ const onDoorDragEnd = (door: Door, e: any) => {
   saveToHistory();
 };
 
-// 문 열림 호(arc) 설정 - 테스트된 유틸 함수 사용
-const getDoorArcConfig = (door: Door) => {
-  const dw = door.width * scale.value;
-  const config = getDoorArcConfigUtil(door.wall, door.openDirection, door.hingeSide, dw);
-
-  return {
-    x: config.x,
-    y: config.y,
-    innerRadius: 0,
-    outerRadius: dw,
-    angle: 90,
-    rotation: config.rotation,
-    clockwise: false, // 반시계방향으로 그림
-    fill: "transparent",
-    stroke: "#6b7280",
-    strokeWidth: 1,
-    dash: [4, 4],
-  };
-};
-
-// 문 패널(열린 문) 설정 - arc와 동일한 중심점에서 45도 방향
-const getDoorPanelConfig = (door: Door) => {
-  const dw = door.width * scale.value;
-  const arcConfig = getDoorArcConfig(door);
-
-  // arc의 중심점(경첩 위치)
-  const cx = arcConfig.x;
-  const cy = arcConfig.y;
-
-  // arc의 rotation + 45도 방향으로 선 그리기
-  const angleRad = ((arcConfig.rotation + 45) * Math.PI) / 180;
-  const endX = cx + dw * Math.cos(angleRad);
-  const endY = cy + dw * Math.sin(angleRad);
-
-  return {
-    points: [cx, cy, endX, endY],
-    stroke: "#374151",
-    strokeWidth: 2,
-  };
-};
-
 // 문 선택 (클릭 - 선택만, Ctrl+클릭 시 다중 선택)
 const selectDoor = (door: Door, e?: any) => {
   // 드래그 상태 해제
@@ -3006,7 +2520,7 @@ const reorderFurnitureLayer = () => {
     const sortedFurniture = [...furnitureList.value].sort((a, b) => a.zIndex - b.zIndex);
 
     sortedFurniture.forEach((furniture) => {
-      const group = furnitureRefs.value.get(furniture.id);
+      const group = getFurnitureRefs().get(furniture.id);
       if (group) {
         const node = group.getNode ? group.getNode() : group;
         if (node && typeof node.moveToTop === 'function') {
