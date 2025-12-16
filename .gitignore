@@ -25,3 +25,10 @@ logs
 
 # Claude
 .claude/
+
+# Test results
+test-results/
+playwright-report/
+
+# Duplicate docs folder
+floor-planner/
