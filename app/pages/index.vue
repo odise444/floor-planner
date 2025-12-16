@@ -59,6 +59,18 @@
 
     <!-- 캔버스 -->
     <EditorFloorPlanCanvas ref="canvasRef" />
+
+    <!-- 우측 속성 패널 -->
+    <aside class="w-64 bg-gray-900 border-l border-gray-700 shrink-0 overflow-hidden">
+      <PanelAttributePanel
+        :selected-furniture="canvasRef?.selectedFurniture || null"
+        :selected-door="canvasRef?.selectedDoor || null"
+        :room="canvasRef?.room || null"
+        :scale="canvasRef?.scale || 2"
+        @update:furniture="onUpdateFurniture"
+        @update:door="onUpdateDoor"
+      />
+    </aside>
   </div>
 </template>
 
@@ -161,6 +173,19 @@ const onCreateGroup = (members: GroupMember[]) => {
 const onUngroup = (groupId: string) => {
   if (canvasRef.value?.onUngroup) {
     canvasRef.value.onUngroup(groupId)
+  }
+}
+
+// 속성 패널 이벤트 핸들러
+const onUpdateFurniture = (updates: Partial<Furniture>) => {
+  if (canvasRef.value?.selectedFurniture && canvasRef.value?.updateFurniture) {
+    canvasRef.value.updateFurniture(canvasRef.value.selectedFurniture.id, updates)
+  }
+}
+
+const onUpdateDoor = (updates: any) => {
+  if (canvasRef.value?.selectedDoor && canvasRef.value?.updateDoor) {
+    canvasRef.value.updateDoor(canvasRef.value.selectedDoor.id, updates)
   }
 }
 

@@ -182,40 +182,159 @@ export function snapToGrid(value: number, gridSize: number = GRID_SIZE): number 
 }
 
 /**
- * 기존 벽체 끝점에 스냅
+ * 점에서 선분까지의 최단 거리와 투영점 계산
+ */
+function pointToSegmentProjection(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): { distance: number; projX: number; projY: number; t: number } {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const lengthSq = dx * dx + dy * dy
+
+  if (lengthSq === 0) {
+    // 선분 길이가 0인 경우
+    const distance = Math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
+    return { distance, projX: x1, projY: y1, t: 0 }
+  }
+
+  // 선분 위 투영점의 파라미터 t (0~1 사이면 선분 위)
+  let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq
+  t = Math.max(0, Math.min(1, t))
+
+  const projX = x1 + t * dx
+  const projY = y1 + t * dy
+  const distance = Math.sqrt((px - projX) ** 2 + (py - projY) ** 2)
+
+  return { distance, projX, projY, t }
+}
+
+/**
+ * 기존 벽체 끝점 또는 선분에 스냅
+ * - 끝점 우선 스냅
+ * - 끝점 스냅이 안 되면 선분(벽체 중심선) 위에 스냅
  */
 export function snapToExistingWall(
   x: number,
   y: number,
   walls: Wall[],
   snapDistance: number = SNAP_DISTANCE
-): SnapResult {
+): SnapResult & { snappedWall?: Wall; snapType?: 'endpoint' | 'segment' } {
   let closestDist = Infinity
   let snapX = x
   let snapY = y
   let snapped = false
+  let snappedWall: Wall | undefined
+  let snapType: 'endpoint' | 'segment' | undefined
 
+  // 1. 먼저 끝점에 스냅 시도
   for (const wall of walls) {
     // 시작점과의 거리
-    const distStart = Math.sqrt(Math.pow(x - wall.startX, 2) + Math.pow(y - wall.startY, 2))
+    const distStart = Math.sqrt((x - wall.startX) ** 2 + (y - wall.startY) ** 2)
     if (distStart < snapDistance && distStart < closestDist) {
       closestDist = distStart
       snapX = wall.startX
       snapY = wall.startY
       snapped = true
+      snappedWall = wall
+      snapType = 'endpoint'
     }
 
     // 끝점과의 거리
-    const distEnd = Math.sqrt(Math.pow(x - wall.endX, 2) + Math.pow(y - wall.endY, 2))
+    const distEnd = Math.sqrt((x - wall.endX) ** 2 + (y - wall.endY) ** 2)
     if (distEnd < snapDistance && distEnd < closestDist) {
       closestDist = distEnd
       snapX = wall.endX
       snapY = wall.endY
       snapped = true
+      snappedWall = wall
+      snapType = 'endpoint'
     }
   }
 
-  return { x: snapX, y: snapY, snapped }
+  // 끝점에 스냅됐으면 반환
+  if (snapped) {
+    return { x: snapX, y: snapY, snapped, snappedWall, snapType }
+  }
+
+  // 2. 끝점 스냅이 안 됐으면 선분(벽체 중심선)에 스냅 시도
+  for (const wall of walls) {
+    const proj = pointToSegmentProjection(
+      x,
+      y,
+      wall.startX,
+      wall.startY,
+      wall.endX,
+      wall.endY
+    )
+
+    // 선분의 양 끝이 아닌 중간 부분에만 스냅 (t가 0.05~0.95 사이)
+    if (proj.t > 0.05 && proj.t < 0.95 && proj.distance < snapDistance && proj.distance < closestDist) {
+      closestDist = proj.distance
+      snapX = proj.projX
+      snapY = proj.projY
+      snapped = true
+      snappedWall = wall
+      snapType = 'segment'
+    }
+  }
+
+  return { x: snapX, y: snapY, snapped, snappedWall, snapType }
+}
+
+/**
+ * T자 연결 시 벽체 끝점 조정
+ * - 새 벽이 기존 벽의 중간에 수직으로 연결될 때
+ * - 기존 벽의 두께를 고려하여 새 벽의 끝점을 조정
+ */
+export function adjustWallForTConnection(
+  newWall: Wall,
+  targetWall: Wall,
+  connectionPoint: 'start' | 'end'
+): Wall {
+  // 기존 벽의 방향 벡터 (정규화)
+  const targetDx = targetWall.endX - targetWall.startX
+  const targetDy = targetWall.endY - targetWall.startY
+  const targetLen = Math.sqrt(targetDx ** 2 + targetDy ** 2)
+  if (targetLen === 0) return newWall
+
+  // 기존 벽의 수직 방향 (왼쪽 90도 회전)
+  const perpX = -targetDy / targetLen
+  const perpY = targetDx / targetLen
+
+  // 새 벽의 방향
+  const newDx = newWall.endX - newWall.startX
+  const newDy = newWall.endY - newWall.startY
+
+  // 새 벽이 기존 벽에 수직인지 확인 (내적이 0에 가까움)
+  const dot = (newDx * targetDx + newDy * targetDy) / (targetLen * Math.sqrt(newDx ** 2 + newDy ** 2))
+  if (Math.abs(dot) > 0.3) {
+    // 수직이 아니면 조정 안 함
+    return newWall
+  }
+
+  // 새 벽이 기존 벽의 어느 쪽에서 오는지 판단
+  const halfThickness = targetWall.thickness / 2
+  const adjustedWall = { ...newWall }
+
+  if (connectionPoint === 'start') {
+    // 새 벽의 시작점이 연결점인 경우
+    // 새 벽의 방향에 따라 시작점을 기존 벽의 외곽으로 이동
+    const newDir = Math.sign(newDx * perpX + newDy * perpY)
+    adjustedWall.startX = newWall.startX + perpX * halfThickness * newDir
+    adjustedWall.startY = newWall.startY + perpY * halfThickness * newDir
+  } else {
+    // 새 벽의 끝점이 연결점인 경우
+    const newDir = Math.sign(-newDx * perpX + -newDy * perpY)
+    adjustedWall.endX = newWall.endX + perpX * halfThickness * newDir
+    adjustedWall.endY = newWall.endY + perpY * halfThickness * newDir
+  }
+
+  return adjustedWall
 }
 
 /**
@@ -250,14 +369,10 @@ export function getWallRenderRect(wall: Wall, scale: number): WallRenderRect {
   const lengthPx = length * scale
   const thicknessPx = wall.thickness * scale
 
-  // 시작점 기준으로 두께의 절반만큼 오프셋
-  const halfThickness = thicknessPx / 2
-  const offsetX = -halfThickness * Math.sin(angle)
-  const offsetY = halfThickness * Math.cos(angle)
-
+  // 시작점 좌표를 그대로 반환 (WallLayer에서 offsetY로 중심선 기준 렌더링)
   return {
-    x: wall.startX * scale + offsetX,
-    y: wall.startY * scale - offsetY,
+    x: wall.startX * scale,
+    y: wall.startY * scale,
     width: lengthPx,
     height: thicknessPx,
     rotation: angleDeg,
@@ -694,5 +809,95 @@ export function wallsToPolygon(walls: Wall[]): WallPolygon | null {
     thickness: avgThickness,
     isClosed,
     color: orderedWalls[0]?.color ?? WALL_COLORS.interior,
+  }
+}
+
+/**
+ * 새 벽체와 기존 벽체들의 연결 관계 확인
+ * @param newWall 새로 생성된 벽체
+ * @param existingWalls 기존 벽체들
+ * @param tolerance 스냅 허용 거리 (cm)
+ * @returns 연결된 벽체들의 ID 목록
+ */
+export function findConnectedWalls(
+  newWall: Wall,
+  existingWalls: Wall[],
+  tolerance: number = SNAP_DISTANCE
+): string[] {
+  const connectedIds: string[] = []
+
+  for (const wall of existingWalls) {
+    if (areWallsConnected(newWall, wall, tolerance)) {
+      connectedIds.push(wall.id)
+    }
+  }
+
+  return connectedIds
+}
+
+/**
+ * 벽체 생성 시 자동 결합 처리
+ * @param newWall 새로 생성된 벽체
+ * @param existingWalls 기존 벽체들
+ * @param tolerance 스냅 허용 거리 (cm)
+ * @returns { walls: 업데이트된 벽체 목록, joinedWallId: 결합된 경우 새 벽체 ID, removedWallIds: 제거된 벽체 ID들 }
+ */
+export function autoJoinWalls(
+  newWall: Wall,
+  existingWalls: Wall[],
+  tolerance: number = SNAP_DISTANCE
+): { walls: Wall[]; joinedWallId: string | null; removedWallIds: string[] } {
+  // 방 벽은 자동 결합에서 제외 (방 구조 유지)
+  const joinableWalls = existingWalls.filter((w) => !w.roomId)
+  const roomWalls = existingWalls.filter((w) => w.roomId)
+
+  // 연결된 벽체 찾기 (방 벽 제외)
+  const connectedIds = findConnectedWalls(newWall, joinableWalls, tolerance)
+
+  // 연결된 벽체가 없으면 그냥 추가
+  if (connectedIds.length === 0) {
+    return {
+      walls: [...existingWalls, newWall],
+      joinedWallId: null,
+      removedWallIds: [],
+    }
+  }
+
+  // 연결된 벽체들 중 동일 선상(collinear)인 것만 필터링
+  const collinearWalls = joinableWalls.filter(
+    (w) => connectedIds.includes(w.id) && areWallsCollinear(newWall, w, tolerance)
+  )
+
+  // 동일 선상인 벽체가 없으면 그냥 추가 (교차점만 연결)
+  if (collinearWalls.length === 0) {
+    return {
+      walls: [...existingWalls, newWall],
+      joinedWallId: null,
+      removedWallIds: [],
+    }
+  }
+
+  // 동일 선상 벽체들과 결합
+  const result = joinWalls(newWall, collinearWalls)
+
+  if (result.joinedWall) {
+    // 기존 벽체에서 결합된 벽체들 제거하고 새 결합 벽체 추가
+    const updatedJoinableWalls = joinableWalls.filter(
+      (w) => !result.removedWallIds.includes(w.id)
+    )
+    updatedJoinableWalls.push(result.joinedWall)
+
+    return {
+      walls: [...roomWalls, ...updatedJoinableWalls],
+      joinedWallId: result.joinedWall.id,
+      removedWallIds: result.removedWallIds,
+    }
+  }
+
+  // 결합 실패 시 그냥 추가
+  return {
+    walls: [...existingWalls, newWall],
+    joinedWallId: null,
+    removedWallIds: [],
   }
 }

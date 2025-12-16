@@ -71,7 +71,7 @@ describe('floorPlanStorage', () => {
       expect(saved).not.toBeNull()
 
       const parsed = JSON.parse(saved!)
-      expect(parsed.version).toBe('1.0')
+      expect(parsed.version).toBe('1.1')
       expect(parsed.room).toEqual(mockRoom)
       expect(parsed.furnitureList).toEqual(mockFurniture)
       expect(parsed.doorList).toEqual(mockDoor)

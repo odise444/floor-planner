@@ -12,6 +12,8 @@ import {
   joinWalls,
   wallsToPolygon,
   findConnectedWallChains,
+  findConnectedWalls,
+  autoJoinWalls,
   DEFAULT_WALL_THICKNESS,
   MIN_WALL_LENGTH,
   GRID_SIZE,
@@ -472,6 +474,115 @@ describe('Wall 유틸리티', () => {
       const polygon = wallsToPolygon([wall1, wall2])
 
       expect(polygon!.thickness).toBe(15) // 평균
+    })
+  })
+
+  describe('findConnectedWalls - 연결된 벽체 찾기', () => {
+    test('새 벽체와 연결된 기존 벽체 ID 반환', () => {
+      const existingWall1 = createWall(0, 0, 100, 0)
+      const existingWall2 = createWall(200, 0, 300, 0)
+      const newWall = createWall(100, 0, 200, 0)
+
+      const connectedIds = findConnectedWalls(newWall, [existingWall1, existingWall2])
+
+      expect(connectedIds).toContain(existingWall1.id)
+      expect(connectedIds).toContain(existingWall2.id)
+      expect(connectedIds).toHaveLength(2)
+    })
+
+    test('연결된 벽체가 없으면 빈 배열 반환', () => {
+      const existingWall = createWall(0, 0, 100, 0)
+      const newWall = createWall(200, 200, 300, 200) // 멀리 떨어짐
+
+      const connectedIds = findConnectedWalls(newWall, [existingWall])
+
+      expect(connectedIds).toHaveLength(0)
+    })
+
+    test('L자 형태로 연결된 벽체도 찾음', () => {
+      const existingWall = createWall(0, 0, 100, 0) // 수평
+      const newWall = createWall(100, 0, 100, 100) // 수직 (L자)
+
+      const connectedIds = findConnectedWalls(newWall, [existingWall])
+
+      expect(connectedIds).toContain(existingWall.id)
+    })
+
+    test('커스텀 허용 오차로 연결 확인', () => {
+      const existingWall = createWall(0, 0, 100, 0)
+      const newWall = createWall(105, 0, 200, 0) // 5cm 떨어짐
+
+      // 기본 허용 오차(10cm)로는 연결됨
+      expect(findConnectedWalls(newWall, [existingWall], 10)).toHaveLength(1)
+
+      // 작은 허용 오차(3cm)로는 연결 안됨
+      expect(findConnectedWalls(newWall, [existingWall], 3)).toHaveLength(0)
+    })
+  })
+
+  describe('autoJoinWalls - 자동 벽체 결합', () => {
+    test('동일 선상의 연결된 벽체는 자동으로 결합', () => {
+      const existingWall = createWall(0, 0, 100, 0)
+      const newWall = createWall(100, 0, 200, 0)
+
+      const result = autoJoinWalls(newWall, [existingWall])
+
+      expect(result.joinedWallId).not.toBeNull()
+      expect(result.walls).toHaveLength(1)
+      expect(getWallLength(result.walls[0]!)).toBe(200)
+    })
+
+    test('연결되지 않은 벽체는 그냥 추가', () => {
+      const existingWall = createWall(0, 0, 100, 0)
+      const newWall = createWall(200, 200, 300, 200) // 멀리 떨어짐
+
+      const result = autoJoinWalls(newWall, [existingWall])
+
+      expect(result.joinedWallId).toBeNull()
+      expect(result.walls).toHaveLength(2)
+    })
+
+    test('L자 형태로 연결된 벽체는 결합하지 않고 추가', () => {
+      const existingWall = createWall(0, 0, 100, 0) // 수평
+      const newWall = createWall(100, 0, 100, 100) // 수직
+
+      const result = autoJoinWalls(newWall, [existingWall])
+
+      expect(result.joinedWallId).toBeNull()
+      expect(result.walls).toHaveLength(2) // 둘 다 유지
+    })
+
+    test('여러 개의 동일 선상 벽체와 한 번에 결합', () => {
+      const existingWall1 = createWall(0, 0, 100, 0)
+      const existingWall2 = createWall(200, 0, 300, 0)
+      const newWall = createWall(100, 0, 200, 0) // 중간에 추가
+
+      const result = autoJoinWalls(newWall, [existingWall1, existingWall2])
+
+      expect(result.joinedWallId).not.toBeNull()
+      expect(result.walls).toHaveLength(1)
+      expect(getWallLength(result.walls[0]!)).toBe(300) // 전체 길이
+    })
+
+    test('빈 기존 벽체 목록에 새 벽체 추가', () => {
+      const newWall = createWall(0, 0, 100, 0)
+
+      const result = autoJoinWalls(newWall, [])
+
+      expect(result.joinedWallId).toBeNull()
+      expect(result.walls).toHaveLength(1)
+      expect(result.walls[0]!.id).toBe(newWall.id)
+    })
+
+    test('결합 시 새 벽체의 속성 유지', () => {
+      const existingWall = createWall(0, 0, 100, 0, { thickness: 15 })
+      const newWall = createWall(100, 0, 200, 0, { thickness: 20, isExterior: true })
+
+      const result = autoJoinWalls(newWall, [existingWall])
+
+      // newWall이 기준 벽체이므로 그 속성 유지
+      expect(result.walls[0]!.thickness).toBe(20)
+      expect(result.walls[0]!.isExterior).toBe(true)
     })
   })
 })
