@@ -591,8 +591,9 @@ import { useHistory } from "~/composables/useHistory";
 import { createMeasurement, getMeasurementMidpoint, formatDistance, type Measurement, type Point } from "~/utils/measureTool";
 import { loadFloorPlanImageFromFile, type FloorPlanImage } from "~/utils/floorPlanImage";
 import { getNextZIndex, sortByZIndex, bringToFront, sendToBack, bringForward, sendBackward, reorderToPosition } from "~/utils/layerOrder";
-import { createWallFromDrag, snapToAngle, snapToExistingWall, getWallRenderRect, getWallLength, joinWalls, findConnectedWallChains, wallsToPolygon, type Wall, type WallPolygon, WALL_COLORS } from "~/utils/wall";
+import { createWallFromDrag, snapToAngle, snapToExistingWall, adjustWallForTConnection, getWallRenderRect, getWallLength, joinWalls, findConnectedWallChains, wallsToPolygon, autoJoinWalls, type Wall, type WallPolygon, WALL_COLORS } from "~/utils/wall";
 import { createGroup, getWallBounds, mergeBoundingBoxes, type ObjectGroup, type GroupMember, type BoundingBox } from "~/utils/group";
+import { findNearestWallDistance, findNearestBoundaryDistance, type ObjectBounds, type RoomBoundary } from "~/utils/distanceCalculation";
 import FurnitureEditForm from "~/components/editor/FurnitureEditForm.vue";
 import DoorEditForm from "~/components/editor/DoorEditForm.vue";
 import WallEditForm from "~/components/editor/WallEditForm.vue";
@@ -1294,73 +1295,118 @@ interface DistanceLine {
 const WALL_DISTANCE_COLOR = '#3b82f6';     // 파란색 (벽까지 거리)
 const FURNITURE_DISTANCE_COLOR = '#f97316'; // 주황색 (가구까지 거리)
 
+// 벽 데이터를 거리 계산용 입력 형식으로 변환 (방 기준 상대 좌표)
+const getWallsForDistanceCalc = (roomX: number, roomY: number, roomScaleFactor: number) => {
+  return wallList.value.map((wall) => ({
+    // 벽 좌표는 cm 단위이므로, 방의 cm 좌표 기준으로 변환
+    startX: wall.startX - roomX / roomScaleFactor,
+    startY: wall.startY - roomY / roomScaleFactor,
+    endX: wall.endX - roomX / roomScaleFactor,
+    endY: wall.endY - roomY / roomScaleFactor,
+    thickness: wall.thickness,
+  }));
+};
+
 const distanceLines = computed((): DistanceLine[] => {
   if (!selectedFurniture.value || !room.value) return [];
 
   const lines: DistanceLine[] = [];
   const f = selectedFurniture.value;
   const r = room.value;
-  const bounds = getFurnitureBounds(f.x, f.y, f);
+  const pixelBounds = getFurnitureBounds(f.x, f.y, f);
 
-  // 벽까지의 거리
-  // 왼쪽 벽
-  const distLeft = bounds.left - r.x;
-  if (distLeft > 0) {
-    const midY = (bounds.top + bounds.bottom) / 2;
-    lines.push({
-      id: 'wall-left',
-      points: [r.x, midY, bounds.left, midY],
-      distance: Math.round(distLeft / scale.value),
-      textX: r.x + distLeft / 2,
-      textY: midY - 8,
-      offsetX: 12,
-      color: WALL_DISTANCE_COLOR,
-    });
-  }
+  // 방의 픽셀 크기를 cm로 변환하기 위한 스케일
+  // room.widthCm이 있으면 사용, 없으면 scale.value 사용
+  const roomScaleFactor = r.widthCm && r.widthCm > 0 ? r.width / r.widthCm : scale.value;
 
-  // 오른쪽 벽
-  const distRight = (r.x + r.width) - bounds.right;
-  if (distRight > 0) {
-    const midY = (bounds.top + bounds.bottom) / 2;
-    lines.push({
-      id: 'wall-right',
-      points: [bounds.right, midY, r.x + r.width, midY],
-      distance: Math.round(distRight / scale.value),
-      textX: bounds.right + distRight / 2,
-      textY: midY - 8,
-      offsetX: 12,
-      color: WALL_DISTANCE_COLOR,
-    });
-  }
+  // cm 단위로 변환한 오브젝트 바운딩 박스 (방 기준 상대 좌표)
+  const objectBounds: ObjectBounds = {
+    left: (pixelBounds.left - r.x) / roomScaleFactor,
+    right: (pixelBounds.right - r.x) / roomScaleFactor,
+    top: (pixelBounds.top - r.y) / roomScaleFactor,
+    bottom: (pixelBounds.bottom - r.y) / roomScaleFactor,
+  };
 
-  // 위쪽 벽
-  const distTop = bounds.top - r.y;
-  if (distTop > 0) {
-    const midX = (bounds.left + bounds.right) / 2;
-    lines.push({
-      id: 'wall-top',
-      points: [midX, r.y, midX, bounds.top],
-      distance: Math.round(distTop / scale.value),
-      textX: midX + 4,
-      textY: r.y + distTop / 2,
-      offsetY: 5,
-      color: WALL_DISTANCE_COLOR,
-    });
-  }
+  const walls = getWallsForDistanceCalc(r.x, r.y, roomScaleFactor);
+  const directions: Array<'left' | 'right' | 'top' | 'bottom'> = ['left', 'right', 'top', 'bottom'];
 
-  // 아래쪽 벽
-  const distBottom = (r.y + r.height) - bounds.bottom;
-  if (distBottom > 0) {
-    const midX = (bounds.left + bounds.right) / 2;
-    lines.push({
-      id: 'wall-bottom',
-      points: [midX, bounds.bottom, midX, r.y + r.height],
-      distance: Math.round(distBottom / scale.value),
-      textX: midX + 4,
-      textY: bounds.bottom + distBottom / 2,
-      offsetY: 5,
-      color: WALL_DISTANCE_COLOR,
-    });
+  // 방 경계 정보 (cm 단위) - 실제 방 크기 사용
+  const roomWidthCm = r.widthCm || r.width / scale.value;
+  const roomHeightCm = r.heightCm || r.height / scale.value;
+  const roomBoundary: RoomBoundary = {
+    left: 0,
+    top: 0,
+    width: roomWidthCm,
+    height: roomHeightCm,
+  };
+
+  // 각 방향으로 거리 계산 (벽 오브젝트 또는 방 경계 중 가까운 것)
+  for (const dir of directions) {
+    // 벽 오브젝트까지 거리
+    const wallResult = findNearestWallDistance(objectBounds, walls, dir);
+    // 방 경계까지 거리
+    const boundaryResult = findNearestBoundaryDistance(objectBounds, roomBoundary, dir);
+
+    // 벽과 방 경계 중 더 가까운 것 선택
+    let result = boundaryResult;
+    let color = WALL_DISTANCE_COLOR;
+
+    if (wallResult && wallResult.distance >= 0 && wallResult.distance < boundaryResult.distance) {
+      result = wallResult;
+    }
+
+    if (result && result.distance > 0) {
+      const midY = (pixelBounds.top + pixelBounds.bottom) / 2;
+      const midX = (pixelBounds.left + pixelBounds.right) / 2;
+      // wallEdge는 방 기준 cm 좌표이므로, 픽셀로 변환 시 방의 좌표를 더함
+      const distancePx = result.distance * roomScaleFactor;
+
+      if (dir === 'left') {
+        const wallEdgePx = r.x + result.wallEdge * roomScaleFactor;
+        lines.push({
+          id: 'wall-left',
+          points: [wallEdgePx, midY, pixelBounds.left, midY],
+          distance: Math.round(result.distance),
+          textX: wallEdgePx + distancePx / 2,
+          textY: midY - 8,
+          offsetX: 12,
+          color,
+        });
+      } else if (dir === 'right') {
+        const wallEdgePx = r.x + result.wallEdge * roomScaleFactor;
+        lines.push({
+          id: 'wall-right',
+          points: [pixelBounds.right, midY, wallEdgePx, midY],
+          distance: Math.round(result.distance),
+          textX: pixelBounds.right + distancePx / 2,
+          textY: midY - 8,
+          offsetX: 12,
+          color,
+        });
+      } else if (dir === 'top') {
+        const wallEdgePx = r.y + result.wallEdge * roomScaleFactor;
+        lines.push({
+          id: 'wall-top',
+          points: [midX, wallEdgePx, midX, pixelBounds.top],
+          distance: Math.round(result.distance),
+          textX: midX + 4,
+          textY: wallEdgePx + distancePx / 2,
+          offsetY: 5,
+          color,
+        });
+      } else if (dir === 'bottom') {
+        const wallEdgePx = r.y + result.wallEdge * roomScaleFactor;
+        lines.push({
+          id: 'wall-bottom',
+          points: [midX, pixelBounds.bottom, midX, wallEdgePx],
+          distance: Math.round(result.distance),
+          textX: midX + 4,
+          textY: pixelBounds.bottom + distancePx / 2,
+          offsetY: 5,
+          color,
+        });
+      }
+    }
   }
 
   // 다른 가구까지의 거리
@@ -1370,31 +1416,31 @@ const distanceLines = computed((): DistanceLine[] => {
     const otherBounds = getFurnitureBounds(other.x, other.y, other);
 
     // Y축이 겹치는 경우 (좌우 거리)
-    const yOverlap = !(bounds.bottom <= otherBounds.top || bounds.top >= otherBounds.bottom);
+    const yOverlap = !(pixelBounds.bottom <= otherBounds.top || pixelBounds.top >= otherBounds.bottom);
     if (yOverlap) {
       // 다른 가구가 오른쪽에 있는 경우
-      if (otherBounds.left > bounds.right) {
-        const dist = otherBounds.left - bounds.right;
-        const midY = Math.max(bounds.top, otherBounds.top) +
-          (Math.min(bounds.bottom, otherBounds.bottom) - Math.max(bounds.top, otherBounds.top)) / 2;
+      if (otherBounds.left > pixelBounds.right) {
+        const dist = otherBounds.left - pixelBounds.right;
+        const midY = Math.max(pixelBounds.top, otherBounds.top) +
+          (Math.min(pixelBounds.bottom, otherBounds.bottom) - Math.max(pixelBounds.top, otherBounds.top)) / 2;
         lines.push({
           id: `furniture-right-${other.id}`,
-          points: [bounds.right, midY, otherBounds.left, midY],
+          points: [pixelBounds.right, midY, otherBounds.left, midY],
           distance: Math.round(dist / scale.value),
-          textX: bounds.right + dist / 2,
+          textX: pixelBounds.right + dist / 2,
           textY: midY - 8,
           offsetX: 12,
           color: FURNITURE_DISTANCE_COLOR,
         });
       }
       // 다른 가구가 왼쪽에 있는 경우
-      if (otherBounds.right < bounds.left) {
-        const dist = bounds.left - otherBounds.right;
-        const midY = Math.max(bounds.top, otherBounds.top) +
-          (Math.min(bounds.bottom, otherBounds.bottom) - Math.max(bounds.top, otherBounds.top)) / 2;
+      if (otherBounds.right < pixelBounds.left) {
+        const dist = pixelBounds.left - otherBounds.right;
+        const midY = Math.max(pixelBounds.top, otherBounds.top) +
+          (Math.min(pixelBounds.bottom, otherBounds.bottom) - Math.max(pixelBounds.top, otherBounds.top)) / 2;
         lines.push({
           id: `furniture-left-${other.id}`,
-          points: [otherBounds.right, midY, bounds.left, midY],
+          points: [otherBounds.right, midY, pixelBounds.left, midY],
           distance: Math.round(dist / scale.value),
           textX: otherBounds.right + dist / 2,
           textY: midY - 8,
@@ -1405,31 +1451,31 @@ const distanceLines = computed((): DistanceLine[] => {
     }
 
     // X축이 겹치는 경우 (상하 거리)
-    const xOverlap = !(bounds.right <= otherBounds.left || bounds.left >= otherBounds.right);
+    const xOverlap = !(pixelBounds.right <= otherBounds.left || pixelBounds.left >= otherBounds.right);
     if (xOverlap) {
       // 다른 가구가 아래에 있는 경우
-      if (otherBounds.top > bounds.bottom) {
-        const dist = otherBounds.top - bounds.bottom;
-        const midX = Math.max(bounds.left, otherBounds.left) +
-          (Math.min(bounds.right, otherBounds.right) - Math.max(bounds.left, otherBounds.left)) / 2;
+      if (otherBounds.top > pixelBounds.bottom) {
+        const dist = otherBounds.top - pixelBounds.bottom;
+        const midX = Math.max(pixelBounds.left, otherBounds.left) +
+          (Math.min(pixelBounds.right, otherBounds.right) - Math.max(pixelBounds.left, otherBounds.left)) / 2;
         lines.push({
           id: `furniture-bottom-${other.id}`,
-          points: [midX, bounds.bottom, midX, otherBounds.top],
+          points: [midX, pixelBounds.bottom, midX, otherBounds.top],
           distance: Math.round(dist / scale.value),
           textX: midX + 4,
-          textY: bounds.bottom + dist / 2,
+          textY: pixelBounds.bottom + dist / 2,
           offsetY: 5,
           color: FURNITURE_DISTANCE_COLOR,
         });
       }
       // 다른 가구가 위에 있는 경우
-      if (otherBounds.bottom < bounds.top) {
-        const dist = bounds.top - otherBounds.bottom;
-        const midX = Math.max(bounds.left, otherBounds.left) +
-          (Math.min(bounds.right, otherBounds.right) - Math.max(bounds.left, otherBounds.left)) / 2;
+      if (otherBounds.bottom < pixelBounds.top) {
+        const dist = pixelBounds.top - otherBounds.bottom;
+        const midX = Math.max(pixelBounds.left, otherBounds.left) +
+          (Math.min(pixelBounds.right, otherBounds.right) - Math.max(pixelBounds.left, otherBounds.left)) / 2;
         lines.push({
           id: `furniture-top-${other.id}`,
-          points: [midX, otherBounds.bottom, midX, bounds.top],
+          points: [midX, otherBounds.bottom, midX, pixelBounds.top],
           distance: Math.round(dist / scale.value),
           textX: midX + 4,
           textY: otherBounds.bottom + dist / 2,
@@ -1709,8 +1755,12 @@ const onMouseUp = (e: any) => {
       endY = snapped.endY;
     }
 
+    // 시작점/끝점의 스냅 정보 확인 (T자 연결 처리용)
+    const startSnap = snapToExistingWall(startX, startY, wallList.value);
+    const endSnap = snapToExistingWall(endX, endY, wallList.value);
+
     // 벽체 생성 (최소 길이 확인은 createWallFromDrag에서)
-    const wall = createWallFromDrag(
+    let wall = createWallFromDrag(
       wallDrawStart.value.x,
       wallDrawStart.value.y,
       wallDrawPreview.value.endX,
@@ -1719,7 +1769,25 @@ const onMouseUp = (e: any) => {
     );
 
     if (wall) {
-      wallList.value.push(wall);
+      // T자 연결 처리: 선분 중간에 스냅된 경우 끝점 조정
+      if (startSnap.snapped && startSnap.snapType === 'segment' && startSnap.snappedWall) {
+        wall = adjustWallForTConnection(wall, startSnap.snappedWall, 'start');
+      }
+      if (endSnap.snapped && endSnap.snapType === 'segment' && endSnap.snappedWall) {
+        wall = adjustWallForTConnection(wall, endSnap.snappedWall, 'end');
+      }
+
+      // 다른 벽에 닿으면 자동으로 결합
+      const result = autoJoinWalls(wall, wallList.value);
+
+      // 선택된 벽체가 결합으로 제거되었으면 선택 해제
+      if (selectedWall.value && result.removedWallIds.includes(selectedWall.value.id)) {
+        selectedWall.value = null;
+        showEditForm.value = false;
+        updateTransformer();
+      }
+
+      wallList.value = result.walls;
       saveToHistory();
     }
 
