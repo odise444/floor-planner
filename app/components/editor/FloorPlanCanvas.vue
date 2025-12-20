@@ -2578,6 +2578,22 @@ const deleteFurniture = () => {
   saveToHistory();
 };
 
+// 가구 속성 업데이트 (속성 패널용)
+const updateFurniture = (id: string, updates: Partial<Furniture>) => {
+  const index = furnitureList.value.findIndex((f) => f.id === id);
+  if (index !== -1) {
+    const target = furnitureList.value[index];
+    if (target) {
+      const updated = { ...target, ...updates };
+      furnitureList.value[index] = updated;
+      if (selectedFurniture.value?.id === id) {
+        selectedFurniture.value = updated;
+      }
+      saveToHistory();
+    }
+  }
+};
+
 // Konva 레이어의 children을 zIndex 순서대로 정렬
 const reorderFurnitureLayer = () => {
   nextTick(() => {
@@ -3332,6 +3348,22 @@ const deleteDoor = () => {
   saveToHistory();
 };
 
+// 문 속성 업데이트 (속성 패널용)
+const updateDoor = (id: string, updates: Partial<Door>) => {
+  const index = doorList.value.findIndex((d) => d.id === id);
+  if (index !== -1) {
+    const target = doorList.value[index];
+    if (target) {
+      const updated = { ...target, ...updates };
+      doorList.value[index] = updated;
+      if (selectedDoor.value?.id === id) {
+        selectedDoor.value = updated;
+      }
+      saveToHistory();
+    }
+  }
+};
+
 // 키보드 이벤트
 const onKeyDown = (e: KeyboardEvent) => {
   // input에 포커스가 있으면 무시
@@ -3744,12 +3776,17 @@ defineExpose({
   wallList,
   floorPlanImage,
   groups: objectGroups,
+  scale,
   // 선택 상태
   selectedFurniture,
+  selectedDoor,
   selectedWall,
   selectedFloorPlanImageId,
   isRoomSelected,
   selectedGroup,
+  // 속성 패널용 업데이트 함수
+  updateFurniture,
+  updateDoor,
   // 모달/폼
   showDoorModal,
   doorWall,
